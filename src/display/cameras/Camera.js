@@ -6,6 +6,7 @@ var Camera = function () {
     this.position = new geom.Vec2();
     this.followRate = Camera.DEFAULT_FOLLOW_RATE;
     this.followObj = undefined;
+    this.zoom = 1;
 };
 
 Object.defineProperties(Camera, {

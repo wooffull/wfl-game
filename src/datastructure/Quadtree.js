@@ -3,7 +3,6 @@
 /**
  * Reference: http://gamedevelopment.tutsplus.com/tutorials/quick-tip-use-quadtrees-to-detect-likely-collisions-in-2d-space--gamedev-374
  */
-
 var Quadtree = function (level, bounds) {
     this.level = level;
     this.objects = [];
@@ -20,6 +19,30 @@ Object.defineProperties(Quadtree, {
     }
 });
 Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
+    draw : {
+        value : function (ctx) {
+            for (var i = 0; i < this.nodes.length; i++) {
+                if (this.nodes[i] !== undefined) {
+                    this.nodes[i].draw(ctx);
+                }
+            }
+
+            ctx.save();
+
+            var colorPercentage = (Quadtree.MAX_LEVELS - this.level + 1) / (Quadtree.MAX_LEVELS + 1);
+
+            ctx.strokeStyle = "rgb(256, 256, " + (256 * colorPercentage) + ")";
+            ctx.strokeRect(
+              this.bounds.x,
+              this.bounds.y,
+              this.bounds.width,
+              this.bounds.height
+            );
+
+            ctx.restore();
+        }
+    },
+
     /**
     * Clears the quadtree
     */
@@ -41,10 +64,10 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
      */
     split : {
         value : function () {
-            var halfWidth = Math.floor(this.bounds.width * 0.5);
-            var halfHeight = Math.floor(this.bounds.height * 0.5);
-            var x = Math.floor(this.bounds.x);
-            var y = Math.floor(this.bounds.y);
+            var halfWidth = ((this.bounds.width >> 1) + 0.5) | 0;
+            var halfHeight = ((this.bounds.height >> 1) + 0.5) | 0;
+            var x = (this.bounds.x + 0.5) | 0;
+            var y = (this.bounds.y + 0.5) | 0;
 
             this.nodes[0] = new Quadtree(this.level + 1, {
                 x : x + halfWidth,
@@ -84,33 +107,45 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
     getIndex : {
         value : function (physObj) {
             var index = -1;
-            var verticalMidpoint = this.bounds.x + this.bounds.width * 0.5;
-            var horizontalMidpoint = this.bounds.y + this.bounds.height * 0.5;
-            var w = physObj.getWidth();
-            var h = physObj.getHeight();
-            var x = physObj.position.x - 0.5 * w;
-            var y = physObj.position.y - 0.5 * h;
+            var verticalMidpoint = this.bounds.x + (this.bounds.width >> 1);
+            var horizontalMidpoint = this.bounds.y + (this.bounds.height >> 1);
+            var w = (Math.abs(Math.cos(physObj.rotation)) * physObj.width + Math.abs(Math.sin(physObj.rotation)) * physObj.height);
+            var h = (Math.abs(Math.cos(physObj.rotation)) * physObj.height + Math.abs(Math.sin(physObj.rotation)) * physObj.width);
+            var x = physObj.position.x;
+            var y = physObj.position.y;
 
             // Object completely fits within top quadrants
-            var topQuadrant = (y < horizontalMidpoint && y + h < horizontalMidpoint);
+            var topQuadrant = (y + (h >> 1) < horizontalMidpoint);
 
             // Object completely fits within bottom quadrants
-            var bottomQuadrant = (y > horizontalMidpoint);
+            var bottomQuadrant = (y - (h >> 1) > horizontalMidpoint);
 
             // Object completely fits within left quadrants
-            if (x < verticalMidpoint && x + w < verticalMidpoint) {
+            if (x + (w >> 1) < verticalMidpoint) {
                 if (topQuadrant) {
                     index = 1;
                 } else if (bottomQuadrant) {
                     index = 2;
+                } else {
+                    index = 4;
                 }
 
             // Object completely fits within right quadrants
-            } else if (x > verticalMidpoint) {
+            } else if (x - (w >> 1) > verticalMidpoint) {
                 if (topQuadrant) {
                     index = 0;
                 } else if (bottomQuadrant) {
                     index = 3;
+                } else {
+                    index = 5;
+                }
+            }
+
+            if (index === -1) {
+                if (topQuadrant && !bottomQuadrant) {
+                    index = 6;
+                } else if (bottomQuadrant && !topQuadrant) {
+                    index = 7;
                 }
             }
 
@@ -128,7 +163,7 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
             if (this.nodes[0] !== undefined) {
                 var index = this.getIndex(physObj);
 
-                if (index !== -1) {
+                if (index > -1 && index < 4) {
                     this.nodes[index].insert(physObj);
                     return;
                 }
@@ -151,7 +186,7 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
                     } else {
                         var index = this.getIndex(curObj);
 
-                        if (index !== -1) {
+                        if (index > -1 && index < 4) {
                             this.nodes[index].insert(this.objects.splice(i, 1)[0]);
                         } else {
                             i++;
@@ -167,14 +202,61 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
      */
     retrieve : {
         value : function (objs, physObj) {
+            /*
             var index = this.getIndex(physObj);
             if (index !== -1 && this.nodes[0] !== undefined) {
                 this.nodes[index].retrieve(objs, physObj);
             }
 
+            if (index === -1) {
+                for (var i = 0; i < this.nodes.length; i++) {
+                    var node = this.nodes[i];
+
+                    if (node) {
+                        node.retrieve(objs, physObj);
+                    }
+                }
+            }
+
             for (var i = 0; i < this.objects.length; i++) {
                 objs.push(this.objects[i]);
             }
+
+            return objs;
+            */
+
+            if (this.nodes[0] !== undefined) {
+                var index = this.getIndex(physObj);
+
+                switch (index) {
+                case 4: // In left quadrants
+                    this.nodes[1].retrieve(objs, physObj);
+                    this.nodes[2].retrieve(objs, physObj);
+                    break;
+                case 5: // In right quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                case 6: // In top quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[1].retrieve(objs, physObj);
+                    break;
+                case 7: // In bottom quadrants
+                    this.nodes[2].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                case -1: // In all quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[1].retrieve(objs, physObj);
+                    this.nodes[2].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                default:
+                    this.nodes[index].retrieve(objs, physObj);
+                }
+            }
+
+            objs.push.apply(objs, this.objects);
 
             return objs;
         }

@@ -50,6 +50,18 @@ Object.defineProperties(Vec2, {
         }
     },
     
+    dot : {
+        value : function (v1, v2) {
+            return (v1.x * v2.x) + (v1.y * v2.y);
+        }
+    },
+    
+    cross : {
+        value : function (v1, v2)  {
+            return (v1.x * v2.y) - (v1.y * v2.x);
+        } 
+    },
+    
     distanceSquared : {
         value : function (v1, v2) {
             var dx = v2.x - v1.x;

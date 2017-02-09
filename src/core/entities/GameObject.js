@@ -14,6 +14,8 @@ var GameObject = function () {
     this.currentState = undefined;
     this.layer = undefined;
     this.customData = {};
+    this.width = 0;
+    this.height = 0;
 };
 
 Object.defineProperties(GameObject, {
@@ -29,8 +31,16 @@ GameObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         value : function (dt) {
             if (this.currentState !== undefined) {
                 this.currentState.update(dt);
-                this.graphic = this.currentState.getGraphic();
+                this.graphic  = this.currentState.getGraphic();
                 this.vertices = this.currentState.getVertices();
+              
+                if (this.graphic) {
+                    this.width  = this.graphic.width;
+                    this.height = this.graphic.height;
+                } else {
+                    this.width  = 0;
+                    this.height = 0;
+                }
             }
         }
     },
@@ -43,21 +53,18 @@ GameObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         }
     },
 
-    getWidth : {
-        value : function () {
-            if (this.graphic === undefined) {
-                return 0;
+    drawDebug : {
+        value : function (ctx) {
+            if (this.vertices.length > 0) {
+                ctx.strokeStyle = "white";
+                ctx.beginPath();
+                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
+                for (var i = 1; i < this.vertices.length; i++) {
+                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
+                }
+                ctx.closePath();
+                ctx.stroke();
             }
-            return this.graphic.width;
-        }
-    },
-
-    getHeight : {
-        value : function () {
-            if (this.graphic === undefined) {
-                return 0;
-            }
-            return this.graphic.height;
         }
     },
 
@@ -74,6 +81,11 @@ GameObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             if (this.currentState !== newState) {
                 this.currentState = newState;
                 this.currentState.setFrame(0);
+              
+                this.vertices = this.currentState.getVertices();
+                this.graphic  = this.currentState.getGraphic();
+                this.width    = this.graphic.width;
+                this.height   = this.graphic.height;
             }
         }
     },
@@ -89,7 +101,7 @@ GameObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
                 this.setState(stateName);
 
                 this.vertices = this.currentState.getVertices();
-                this.graphic = this.currentState.getGraphic();
+                this.graphic  = this.currentState.getGraphic();
             }
         }
     },

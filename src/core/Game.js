@@ -19,6 +19,12 @@ var Game = function (canvasDisplayObject) {
     this._scene             = undefined;
 
     this.keyboard.start();
+    
+    // Disable anti-aliasing
+    this.ctx.mozImageSmoothingEnabled    = false;
+    this.ctx.webkitImageSmoothingEnabled = false;
+    this.ctx.msImageSmoothingEnabled     = false;
+    this.ctx.imageSmoothingEnabled       = false;
 
     // Start the game's update loop
     this.animationId = requestAnimationFrame(this.update.bind(this));
@@ -41,11 +47,12 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
 
             if (this._scene) {
                 this._scene.update(dt);
+                this._scene._beforeDraw(this.ctx);
                 this._scene.draw(this.ctx);
+                this._scene._afterDraw(this.ctx);
             }
 
             this.previousUpdateTime = time;
-
             this.keyboard.update();
         }
     },
@@ -93,6 +100,7 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
             }
 
             scene.keyboard = this.keyboard;
+            scene.mouse = this.mouse;
             this._scene = scene;
         }
     }

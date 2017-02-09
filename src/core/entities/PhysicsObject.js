@@ -15,6 +15,7 @@ var PhysicsObject = function () {
     this.maxSpeed = PhysicsObject.DEFAULT_MAX_SPEED;
     this.maxAcceleration = PhysicsObject.DEFAULT_MAX_ACCELERATION;
     this.forward = new geom.Vec2(1, 0);
+    this.rotation = 0; // Updated per frame according to this.forward
     this.mass = 1000.0;
     this.solid = true;
     this.fixed = false;
@@ -53,6 +54,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
     rotate : {
         value : function (theta) {
             this.forward.rotate(theta);
+            this.rotation = this.forward.getAngle();
 
             for (var stateName in this.states) {
                 var state = this.states[stateName];
@@ -67,18 +69,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             }
 
             return this;
-        }
-    },
-
-    getRotation : {
-        value : function () {
-            return this.forward.getAngle();
-        }
-    },
-
-    setRotation : {
-        value : function (angle) {
-            this.rotate(angle - this.getRotation());
         }
     },
 
@@ -108,6 +98,8 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
 
             // Apply the current velocity
             this.position.add(this.velocity.clone().multiply(dt));
+
+            this.rotation = this.forward.getAngle();
         }
     },
 
@@ -115,7 +107,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         value : function (ctx) {
             ctx.save();
 
-            ctx.rotate(this.getRotation());
+            ctx.rotate(this.rotation);
 
             if (this.graphic === undefined) {
                 ctx.beginPath();
@@ -130,22 +122,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         }
     },
 
-    drawDebug : {
-        value : function (ctx) {
-            if (this.vertices.length > 0) {
-                ctx.strokeStyle = "white";
-                ctx.beginPath();
-                ctx.moveTo(this.vertices[0].x, this.vertices[0].y);
-
-                for (var i = 1; i < this.vertices.length; i++) {
-                    ctx.lineTo(this.vertices[i].x, this.vertices[i].y);
-                }
-                ctx.closePath();
-                ctx.stroke();
-            }
-        }
-    },
-
     checkCollision : {
         value : function (physObj) {
             var collisionData = {
@@ -156,9 +132,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             // (Optimization) Determine if a collision check is necessary.
             // - If both objects aren't solid, they cannot collide.
             // - If both objects are fixed, they can never collide.
-            if (!this.solid && !physObj.solid ||
-                this.fixed && physObj.fixed) {
-
+            if ((!this.solid && !physObj.solid) || (this.fixed && physObj.fixed)) {
                 return collisionData;
             }
 
@@ -167,12 +141,12 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             //
             // In other words, check if the two object's "bounding circles"
             // collide using A^2 + B^2 = C^2
-            var thisW = this.getWidth();
-            var thisH = this.getHeight();
-            var thatW = physObj.getWidth();
-            var thatH = physObj.getHeight();
-            var radiusSquared1 = (thisW * thisW + thisH * thisH) * 0.25;
-            var radiusSquared2 = (thatW * thatW + thatH * thatH) * 0.25;
+            var thisW = this.width;
+            var thisH = this.height;
+            var thatW = physObj.width;
+            var thatH = physObj.height;
+            var radiusSquared1 = (thisW * thisW + thisH * thisH) >> 2;
+            var radiusSquared2 = (thatW * thatW + thatH * thatH) >> 2;
             var distanceSquared = new geom.Vec2.subtract(this.position, physObj.position).getMagnitudeSquared();
             var mayCollide = (distanceSquared <= radiusSquared1 + radiusSquared2);
 
