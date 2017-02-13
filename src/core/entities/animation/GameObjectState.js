@@ -3,12 +3,14 @@
 /**
  * Represents a state for a game object
  */
-var GameObjectState = function () {
-    this.frameObjects = [];
-    this.graphic = undefined;
+var GameObjectState = function (name = '', vertices = undefined) {
+    this.frameObjects   = [];
     this.animationTimer = 0;
-    this.frameId = 0;
-    this.name = "";
+    this.frameId        = 0;
+    this.name           = name;
+  
+    // If vertices is defined, it is used instead of a frame object's vertices
+    this.vertices       = vertices;
 };
 
 GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototype, {
@@ -31,9 +33,9 @@ GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototyp
         }
     },
 
-    getGraphic : {
+    getSprite : {
         value : function () {
-            return this.frameObjects[this.frameId].graphic;
+            return this.frameObjects[this.frameId];
         }
     },
 

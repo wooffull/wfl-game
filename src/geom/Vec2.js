@@ -1,17 +1,10 @@
 "use strict";
 
-// 2-D Vector
-var Vec2 = function (x, y) {
-    if (isNaN(x)) {
-        x = 0;
-    }
-    
-    if (isNaN(y)) {
-        y = 0;
-    }
+const PIXI = require('pixi.js');
 
-    this.x = x;
-    this.y = y;
+// 2-D Vector
+var Vec2 = function (x, y, cb = () => false, scope = null) {
+    PIXI.ObservablePoint.call(this, cb, scope, x, y);
 };
 Object.defineProperties(Vec2, {
     add : {
@@ -85,7 +78,7 @@ Object.defineProperties(Vec2, {
         }
     }
 });
-Vec2.prototype = Object.freeze(Object.create(Vec2.prototype, {
+Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
     getMagnitudeSquared : {
         value : function () {
             return this.x * this.x + this.y * this.y;

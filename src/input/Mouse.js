@@ -118,9 +118,10 @@ Mouse.prototype = Object.freeze(Object.create(Mouse.prototype, {
     _getMousePositionFromEvent : {
         value : function (e) {
             var rect = this._canvas.getBoundingClientRect();
-            var pos = new geom.Vec2();
-            pos.x = e.clientX - rect.left;
-            pos.y = e.clientY - rect.top;
+            var pos = new geom.Vec2(
+              e.clientX - rect.left,
+              e.clientY - rect.top
+            );
 
             return pos;
         }

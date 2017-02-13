@@ -9,7 +9,7 @@ var GameObject = require('./GameObject.js');
 var PhysicsObject = function () {
     GameObject.call(this);
 
-    this.position = new geom.Vec2();
+    this.transform.position = new geom.Vec2();
     this.velocity = new geom.Vec2();
     this.acceleration = new geom.Vec2();
     this.maxSpeed = PhysicsObject.DEFAULT_MAX_SPEED;
@@ -84,8 +84,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
 
     update : {
         value : function (dt) {
-            GameObject.prototype.update.call(this, dt);
-
             // Limit acceleration to max acceleration
             this.acceleration.limit(this.maxAcceleration);
 
@@ -100,6 +98,8 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             this.position.add(this.velocity.clone().multiply(dt));
 
             this.rotation = this.forward.getAngle();
+          
+            GameObject.prototype.update.call(this, dt);
         }
     },
 
