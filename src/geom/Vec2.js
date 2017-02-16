@@ -3,15 +3,15 @@
 const PIXI = require('pixi.js');
 
 // 2-D Vector
-var Vec2 = function (x, y, cb = () => false, scope = null) {
+var Vec2 = function (x, y, cb = () => null, scope = null) {
     PIXI.ObservablePoint.call(this, cb, scope, x, y);
 };
 Object.defineProperties(Vec2, {
     add : {
         value : function (v1, v2) {
             return new Vec2(
-                v1.x + v2.x,
-                v1.y + v2.y
+                v1._x + v2._x,
+                v1._y + v2._y
             );
         }
     },
@@ -19,8 +19,8 @@ Object.defineProperties(Vec2, {
     subtract : {
         value : function (v1, v2) {
             return new Vec2(
-                v1.x - v2.x,
-                v1.y - v2.y
+                v1._x - v2._x,
+                v1._y - v2._y
             );
         }
     }, 
@@ -28,8 +28,8 @@ Object.defineProperties(Vec2, {
     multiply : {
         value : function (v, scalar) {
             return new Vec2(
-                v.x * scalar,
-                v.y * scalar
+                v._x * scalar,
+                v._y * scalar
             );
         }
     },
@@ -37,28 +37,28 @@ Object.defineProperties(Vec2, {
     divide : {
         value : function (v, scalar) {
             return new Vec2(
-                v.x / scalar,
-                v.y / scalar
+                v._x / scalar,
+                v._y / scalar
             );
         }
     },
     
     dot : {
         value : function (v1, v2) {
-            return (v1.x * v2.x) + (v1.y * v2.y);
+            return (v1._x * v2._x) + (v1._y * v2._y);
         }
     },
     
     cross : {
         value : function (v1, v2)  {
-            return (v1.x * v2.y) - (v1.y * v2.x);
+            return (v1._x * v2._y) - (v1._y * v2._x);
         } 
     },
     
     distanceSquared : {
         value : function (v1, v2) {
-            var dx = v2.x - v1.x;
-            var dy = v2.y - v1.y;
+            var dx = v2._x - v1._x;
+            var dy = v2._y - v1._y;
             return dx * dx + dy * dy;
         }
     },
@@ -81,7 +81,7 @@ Object.defineProperties(Vec2, {
 Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
     getMagnitudeSquared : {
         value : function () {
-            return this.x * this.x + this.y * this.y;
+            return this._x * this._x + this._y * this._y;
         }
     },
 
@@ -95,18 +95,18 @@ Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
         value : function (value) {
             var mag = this.getMagnitude();
             
-            this.x /= mag;
-            this.y /= mag;
+            this._x /= mag;
+            this._y /= mag;
             
-            this.x *= value;
-            this.y *= value;
+            this._x *= value;
+            this._y *= value;
             return this;
         }
     },
     
     getAngle : {
         value : function () {
-            return Math.atan2(this.y, this.x);
+            return Math.atan2(this._y, this._x);
         }
     },
     
@@ -114,8 +114,8 @@ Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
         value : function (value) {
             var mag = this.getMagnitude();
             
-            this.x = mag * Math.cos(value);
-            this.y = mag * Math.sin(value);
+            this._x = mag * Math.cos(value);
+            this._y = mag * Math.sin(value);
             return this;
         }
     },
@@ -130,39 +130,39 @@ Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
     getDirection : {
         value : function () {
             var mag = this.getMagnitude();
-            var v = new Vec2(this.x / mag, this.y / mag);
+            var v = new Vec2(this._x / mag, this._y / mag);
             return v;
         }
     },
     
     add : {
         value : function (other) {
-            this.x += other.x;
-            this.y += other.y;
+            this._x += other._x;
+            this._y += other._y;
             return this;
         }
     },
     
     subtract : {
         value : function (other) {
-            this.x -= other.x;
-            this.y -= other.y;
+            this._x -= other._x;
+            this._y -= other._y;
             return this;
         }
     },
     
     multiply : {
         value : function (scalar) {
-            this.x *= scalar;
-            this.y *= scalar;
+            this._x *= scalar;
+            this._y *= scalar;
             return this;
         }
     },
     
     divide : {
         value : function (scalar) {
-            this.x /= scalar;
-            this.y /= scalar;
+            this._x /= scalar;
+            this._y /= scalar;
             return this;
         }
     },
@@ -171,8 +171,8 @@ Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
         value : function () {
             var mag = this.getMagnitude();
             
-            this.x /= mag;
-            this.y /= mag;
+            this._x /= mag;
+            this._y /= mag;
             return this;
         }
     },
@@ -189,13 +189,13 @@ Vec2.prototype = Object.freeze(Object.create(PIXI.ObservablePoint.prototype, {
     
     clone : {
         value : function () {
-            return new Vec2(this.x, this.y);
+            return new Vec2(this._x, this._y);
         }
     },
     
     getOrthogonal : {
         value : function () {
-            return new Vec2(this.y, -this.x);
+            return new Vec2(this._y, -this._x);
         }
     }
 }));

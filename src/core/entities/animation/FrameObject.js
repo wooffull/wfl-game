@@ -8,30 +8,28 @@ const geom = require('../../../geom');
  */
 //var FrameObject = function (texture, duration, createBoundingBox) {
 class FrameObject extends PIXI.Sprite {
-  constructor(texture, duration, createBoundingBox) {
+  constructor(texture, duration, vertices) {
     super(texture);
     
     if (isNaN(duration) || duration < 1) {
       duration = 1;
     }
 
-    if (typeof createBoundingBox !== "boolean") {
-      createBoundingBox = true;
-    }
-
     this.duration = duration;
-    this.vertices = [];
 
-    if (createBoundingBox) {
+    if (typeof vertices === 'undefined') {
       var w = this.width;
       var h = this.height;
 
+      this.vertices = [];
       this.vertices.push(
         new geom.Vec2(-w * 0.5, -h * 0.5),
         new geom.Vec2(w * 0.5, -h * 0.5),
         new geom.Vec2(w * 0.5, h * 0.5),
         new geom.Vec2(-w * 0.5, h * 0.5)
       );
+    } else {
+      this.vertices = vertices;
     }
   
     // Center the sprite

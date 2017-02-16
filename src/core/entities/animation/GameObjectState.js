@@ -3,14 +3,14 @@
 /**
  * Represents a state for a game object
  */
-var GameObjectState = function (name = '', vertices = undefined) {
+var GameObjectState = function (name = '') {
     this.frameObjects   = [];
     this.animationTimer = 0;
     this.frameId        = 0;
     this.name           = name;
   
-    // If vertices is defined, it is used instead of a frame object's vertices
-    this.vertices       = vertices;
+    this.vertices       = [];
+    this.sprite         = null;
 };
 
 GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototype, {
@@ -24,6 +24,9 @@ GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototyp
                 this.frameId++;
                 this.frameId %= this.frameObjects.length;
             }
+                
+            this.vertices = this.frameObjects[this.frameId].vertices;
+            this.sprite   = this.frameObjects[this.frameId];
         }
     },
 
@@ -33,19 +36,7 @@ GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototyp
         }
     },
 
-    getSprite : {
-        value : function () {
-            return this.frameObjects[this.frameId];
-        }
-    },
-
-    getVertices : {
-        value : function () {
-            return this.frameObjects[this.frameId].vertices;
-        }
-    },
-
-    getFrame : {
+    getCurrentFrame : {
         value : function () {
             var frameCounter = 0;
 
@@ -61,7 +52,7 @@ GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototyp
         }
     },
 
-    setFrame : {
+    setCurrentFrame : {
         value : function (frame) {
             var frameCounter = 0;
 
@@ -80,18 +71,6 @@ GameObjectState.prototype = Object.freeze(Object.create(GameObjectState.prototyp
             // If the desired frame is out of bounds, set the animation to the beginning
             this.frameId = 0;
             this.animationTimer = 0;
-        }
-    },
-
-    getName : {
-        value : function () {
-            return this.name;
-        }
-    },
-
-    setName : {
-        value : function (value) {
-            this.name = value;
         }
     }
 }));

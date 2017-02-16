@@ -106,13 +106,14 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
      */
     getIndex : {
         value : function (physObj) {
+            var calculationCache = physObj.calculationCache;
             var index = -1;
             var verticalMidpoint = this.bounds.x + (this.bounds.width >> 1);
             var horizontalMidpoint = this.bounds.y + (this.bounds.height >> 1);
-            var w = (Math.abs(Math.cos(physObj.rotation)) * physObj.width + Math.abs(Math.sin(physObj.rotation)) * physObj.height);
-            var h = (Math.abs(Math.cos(physObj.rotation)) * physObj.height + Math.abs(Math.sin(physObj.rotation)) * physObj.width);
-            var x = physObj.position.x;
-            var y = physObj.position.y;
+            var w = calculationCache.aabbWidth;
+            var h = calculationCache.aabbHeight;
+            var x = calculationCache.x;
+            var y = calculationCache.y;
 
             // Object completely fits within top quadrants
             var topQuadrant = (y + (h >> 1) < horizontalMidpoint);
@@ -177,7 +178,8 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
                 }
 
                 var i = 0;
-                while (i < this.objects.length) {
+                var objectsLength = this.objects.length;
+                while (i < objectsLength) {
                     var curObj = this.objects[i];
 
                     if (curObj === undefined) {
@@ -202,29 +204,6 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
      */
     retrieve : {
         value : function (objs, physObj) {
-            /*
-            var index = this.getIndex(physObj);
-            if (index !== -1 && this.nodes[0] !== undefined) {
-                this.nodes[index].retrieve(objs, physObj);
-            }
-
-            if (index === -1) {
-                for (var i = 0; i < this.nodes.length; i++) {
-                    var node = this.nodes[i];
-
-                    if (node) {
-                        node.retrieve(objs, physObj);
-                    }
-                }
-            }
-
-            for (var i = 0; i < this.objects.length; i++) {
-                objs.push(this.objects[i]);
-            }
-
-            return objs;
-            */
-
             if (this.nodes[0] !== undefined) {
                 var index = this.getIndex(physObj);
 

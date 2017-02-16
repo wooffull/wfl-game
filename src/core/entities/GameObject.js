@@ -12,12 +12,14 @@ const FrameObject     = animation.FrameObject;
 var GameObject = function () {
   PIXI.Container.call(this);
   
-  this.position     = new geom.Vec2(this.position.x, this.position.y, this.position.cb, this.position.scope);
-  this.vertices     = undefined;
-  this.states       = {};
-  this.currentState = undefined;
-  this.layer        = undefined;
-  this.customData   = {};
+  // Optimization: Use transform.position to avoid the getter for position
+  this.transform.position = new geom.Vec2(this.position.x, this.position.y, this.position.cb, this.position.scope);
+  this.vertices           = undefined;
+  this.states             = {};
+  this.currentState       = undefined;
+  this.layer              = undefined;
+  this.customData         = {};
+  this.calculationCache   = {};
 };
 
 Object.defineProperties(GameObject, {
@@ -28,14 +30,14 @@ Object.defineProperties(GameObject, {
   },
   
   createState: {
-    value: function (name, vertices) {
-      return new GameObjectState(name, vertices);
+    value: function (name) {
+      return new GameObjectState(name);
     }
   },
   
   createFrame: {
-    value: function (texture, duration, createBoundingBox) {
-      return new FrameObject(texture, duration, createBoundingBox);
+    value: function (texture, duration, vertices) {
+      return new FrameObject(texture, duration, vertices);
     }
   }
 });
@@ -45,21 +47,7 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
     value: function (dt) {
       if (this.currentState !== undefined) {
         this.currentState.update(dt);
-        
-        let sprite    = this.currentState.getSprite();
-        this.vertices = this.currentState.getVertices();
-        
-        if (sprite) {
-          // Reset Container's children
-          this.children.length = 0;
-          
-          // Add the current frame's sprite and update container's transform
-          this.addChild(sprite);
-          this.updateTransform();
-        } else {
-          this.width  = 0;
-          this.height = 0;
-        }
+        this._setSprite(this.currentState.sprite);
       }
     }
   },
@@ -91,12 +79,10 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
 
       if (this.currentState !== newState) {
         this.currentState = newState;
-        this.currentState.setFrame(0);
+        this.currentState.setCurrentFrame(0);
         
-        let sprite    = this.currentState.getSprite();
-        this.vertices = this.currentState.getVertices();
-        this.width    = sprite.width;
-        this.height   = sprite.height;
+        // Call GameObject's prototype to update and set the new sprite
+        GameObject.prototype.update.call(this, 0);
       }
     }
   },
@@ -111,12 +97,41 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
       }
       
       this.states[stateName] = state;
-      state.setName(stateName);
+      state.name = stateName;
 
       // No current state yet, so initialize game object with newly
       // added state
       if (this.currentState === undefined) {
         this.setState(stateName);
+      }
+    }
+  },
+  
+  cacheCalculations: {
+    value: function () {
+      var position = this.transform.position;
+      var width    = this.width;
+      var height   = this.height;
+      
+      this.calculationCache.x      = position._x;
+      this.calculationCache.y      = position._y;
+      this.calculationCache.width  = width;
+      this.calculationCache.height = height;
+    }
+  },
+  
+  _setSprite: {
+    value: function (sprite) {
+      this.vertices = this.currentState.vertices;
+      
+      // Reset Container's children
+      this.children.length = 0;
+
+      if (sprite) {
+        this.addChild(sprite);
+      } else {
+        this.width  = 0;
+        this.height = 0;
       }
     }
   }

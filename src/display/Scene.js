@@ -98,6 +98,11 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       obj.layer = layerId;
       
       this._stage.addChild(obj);
+      
+      // Cache game object's calculations before update is called.
+      // The cache calculations are needed in the quad tree (which is
+      // updated in update())
+      obj.cacheCalculations();
     }
   },
 
@@ -143,12 +148,13 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   canSee : {
     value : function (obj) {
+      var cache     =  obj.calculationCache;
+      var width     = cache.aabbWidth;
+      var height    = cache.aabbHeight;
       var objOffset = new geom.Vec2(
-        obj.position.x - this.camera.position.x,
-        obj.position.y - this.camera.position.y
+        cache.x - this.camera.position.x,
+        cache.y - this.camera.position.y
       );
-      var width  = (Math.abs(Math.cos(obj.rotation)) * obj.width  + Math.abs(Math.sin(obj.rotation)) * obj.height);
-      var height = (Math.abs(Math.cos(obj.rotation)) * obj.height + Math.abs(Math.sin(obj.rotation)) * obj.width);
       
       // If the game object is too far away, it currently cannot be seen
       return (objOffset.x + (width  >> 1) >= -this._screenOffset.x / this.camera.zoom &&
@@ -166,28 +172,19 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       // (Optimization) Partition all the game objects into chunks
       this._partitionChunks();
       this._nearbyGameObjects = this._findSurroundingGameObjects(this.camera);
-      for (var i = 0; i < this._nearbyGameObjects.length; i++) {
+      var nearbyObjectLength  = this._nearbyGameObjects.length;
+      
+      for (var i = 0; i < nearbyObjectLength; i++) {
         this._quadtree.insert(this._nearbyGameObjects[i]);
       }
 
-      for (var i = 0; i < this._nearbyGameObjects.length; i++) {
+      for (var i = 0; i < nearbyObjectLength; i++) {
         this._nearbyGameObjects[i].update(dt);
+        this._nearbyGameObjects[i].cacheCalculations();
       }
 
       this.camera.update(dt);
       this._handleCollisions(this._nearbyGameObjects);
-      
-      // Add all children to stage, allowing z-order by layers
-      //this._stage.removeChildren();
-      
-      for (let child of this._nearbyGameObjects) {
-  
-        //this._stage.addChild(child);
-      }
-//      this._stage.children = this._nearbyGameObjects;
-      /*this._stage.children.concat(this._nearbyGameObjects.filter(function (obj) {
-        return this.canSee(obj);
-      }));*/
     }
   },
 
@@ -196,7 +193,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    */
   draw : {
     value : function (renderer) {
-      renderer.render(this._stage);
+      //renderer.render(this._stage);
       /*
       var gameObjects = this.getGameObjects();
 
@@ -261,26 +258,32 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     value : function () {
       this._chunks = [];
 
-      var gameObjects = this.getGameObjects();
-      var minX = Infinity;
-      var minY = Infinity;
-      var maxY = -Infinity;
-      var maxX = -Infinity;
+      var minX                  =  Infinity;
+      var minY                  =  Infinity;
+      var maxY                  = -Infinity;
+      var maxX                  = -Infinity;
       var totalChunksHorizontal = 0;
       var totalChunksVertical   = 0;
+      var gameObjects           = this.getGameObjects();
+      var gameObjectLength      = gameObjects.length;
 
       // Find min and max positions
-      for (var i = 0; i < gameObjects.length; i++) {
-        var pos = gameObjects[i].position;
+      for (var i = 0; i < gameObjectLength; i++) {
+        var cache = gameObjects[i].calculationCache;
 
-        minX = Math.min(pos.x, minX);
-        minY = Math.min(pos.y, minY);
-        maxX = Math.max(pos.x, maxX);
-        maxY = Math.max(pos.y, maxY);
+        minX = Math.min(cache.x, minX);
+        minY = Math.min(cache.y, minY);
+        maxX = Math.max(cache.x, maxX);
+        maxY = Math.max(cache.y, maxY);
       }
+      
+      // Optimization: Calculate dx and dy ahead of time so they don't need to be calculated in
+      // every iteration of an upcoming loop
+      var dx = maxX - minX;
+      var dy = maxY - minY;
 
-      totalChunksHorizontal = Math.max(Math.ceil((maxX - minX) / this._chunkConfig.size), 1);
-      totalChunksVertical   = Math.max(Math.ceil((maxY - minY) / this._chunkConfig.size), 1);
+      totalChunksHorizontal = Math.max(Math.ceil(dx / this._chunkConfig.size), 1);
+      totalChunksVertical   = Math.max(Math.ceil(dy / this._chunkConfig.size), 1);
 
       for (var i = 0; i < totalChunksHorizontal; i++) {
         this._chunks[i] = [];
@@ -291,10 +294,12 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       }
 
       // Add game objects to the chunk they're located in
-      for (var i = 0; i < gameObjects.length; i++) {
-        var pos = gameObjects[i].position;
-        var chunkX = Math.floor((totalChunksHorizontal - 1) * (pos.x - minX) / (maxX - minX));
-        var chunkY = Math.floor((totalChunksVertical   - 1) * (pos.y - minY) / (maxY - minY));
+      var chunkRatioX = (totalChunksHorizontal - 1) / dx;
+      var chunkRatioY = (totalChunksVertical   - 1) / dy;
+      for (var i = 0; i < gameObjectLength; i++) {
+        var cache  = gameObjects[i].calculationCache;
+        var chunkX = Math.floor(chunkRatioX * (cache.x - minX));
+        var chunkY = Math.floor(chunkRatioY * (cache.y - minY));
 
         if (isNaN(chunkX)) chunkX = 0;
         if (isNaN(chunkY)) chunkY = 0;
@@ -302,16 +307,16 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         this._chunks[chunkX][chunkY].push(gameObjects[i]);
       }
 
+      // Finally set values for chunk size and create a new quad tree
       this._chunkConfig.minX = minX;
       this._chunkConfig.minY = minY;
       this._chunkConfig.maxX = maxX;
       this._chunkConfig.maxY = maxY;
-
       this._quadtree = new datastructure.Quadtree(0, {
-        x    : minX,
-        y    : minY,
-        width  : maxX - minX,
-        height : maxY - minY
+        x:      minX,
+        y:      minY,
+        width:  dx,
+        height: dy
       });
     }
   },
@@ -322,9 +327,12 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
 
       var totalChunksHorizontal = this._chunks.length;
       var totalChunksVertical   = this._chunks[0].length;
-      var pos           = gameObject.position;
-      var chunkX        = Math.floor((totalChunksHorizontal - 1) * (pos.x - this._chunkConfig.minX) / (this._chunkConfig.maxX - this._chunkConfig.minX));
-      var chunkY        = Math.floor((totalChunksVertical   - 1) * (pos.y - this._chunkConfig.minY) / (this._chunkConfig.maxY - this._chunkConfig.minY));
+      
+      // The "||" is needed for the camera, which is not actually a GameObject.
+      // TODO: Make camera a GameObject?
+      var cache         = gameObject.calculationCache || gameObject.position;
+      var chunkX        = Math.floor((totalChunksHorizontal - 1) * (cache.x - this._chunkConfig.minX) / (this._chunkConfig.maxX - this._chunkConfig.minX));
+      var chunkY        = Math.floor((totalChunksVertical   - 1) * (cache.y - this._chunkConfig.minY) / (this._chunkConfig.maxY - this._chunkConfig.minY));
 
       if (isNaN(chunkX)) chunkX = 0;
       if (isNaN(chunkY)) chunkY = 0;
@@ -349,10 +357,11 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   _findSurroundingChunks : {
     value : function (gameObject, chunkRadius) {
-      var nearChunkIndices = this._findSurroundingChunkIndices(gameObject, chunkRadius);
-      var nearChunks     = [];
+      var nearChunkIndices     = this._findSurroundingChunkIndices(gameObject, chunkRadius);
+      var nearChunkIndexLength = nearChunkIndices.length;
+      var nearChunks           = [];
 
-      for (var i = 0; i < nearChunkIndices.length; i++) {
+      for (var i = 0; i < nearChunkIndexLength; i++) {
         var x = nearChunkIndices[i].x;
         var y = nearChunkIndices[i].y;
         nearChunks.push(this._chunks[x][y]);
@@ -364,10 +373,11 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   _findSurroundingGameObjects : {
     value : function (gameObject, chunkRadius) {
-      var nearChunks  = this._findSurroundingChunks(gameObject, chunkRadius);
-      var gameObjects = [];
+      var nearChunks      = this._findSurroundingChunks(gameObject, chunkRadius);
+      var nearChunkLength = nearChunks.length;
+      var gameObjects     = [];
 
-      for (var i = 0; i < nearChunks.length; i++) {
+      for (var i = 0; i < nearChunkLength; i++) {
         gameObjects = gameObjects.concat(nearChunks[i]);
       }
 
@@ -380,30 +390,32 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    */
   _handleCollisions : {
     value : function (gameObjects) {
+      var gameObjectLength = gameObjects.length;
+      
       // Reset collision references
-      for (var i = 0; i < gameObjects.length; i++) {
+      for (var i = 0; i < gameObjectLength; i++) {
         var cur = gameObjects[i];
         cur.customData.collisionId   = i;
         cur.customData.collisionList = [];
       }
 
-      for (var i = 0; i < gameObjects.length; i++) {
-        var cur = gameObjects[i];
+      for (var i = 0; i < gameObjectLength; i++) {
+        var obj0 = gameObjects[i];
 
         // Skip over certain objects for collision detection because
         // other objects will check against them later
-        if (!cur) {
+        if (!obj0) {
           continue;
         }
 
         var possibleCollisions = [];
-        this._quadtree.retrieve(possibleCollisions, cur);
+        this._quadtree.retrieve(possibleCollisions, obj0);
+        var possibleCollisionLength = possibleCollisions.length;
 
-        for (var j = 0; j < possibleCollisions.length; j++) {
-          var obj0 = gameObjects[i];
+        for (var j = 0; j < possibleCollisionLength; j++) {
           var obj1 = possibleCollisions[j];
 
-          if (obj0 && obj1 && obj0 !== obj1) {
+          if (obj1 && obj0 !== obj1) {
             if (obj0.customData.collisionList.indexOf(obj1.customData.collisionId) === -1) {
               var collisionData = obj0.checkCollision(obj1);
 
