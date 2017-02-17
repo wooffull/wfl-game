@@ -3,13 +3,8 @@
 var geom = require('../../geom');
 var GameObject = require('./GameObject.js');
 
-const abs   = Math.abs;
-const cos   = Math.cos;
-const sin   = Math.sin;
-const min   = Math.min;
-const max   = Math.max;
-const round = Math.round;
-const PI    = Math.PI;
+// Use this trash vector to prevent creating new ones over and over
+var tempVector = new geom.Vec2();
 
 /**
  * A game object with basic 2D physics
@@ -43,7 +38,7 @@ Object.defineProperties(PhysicsObject, {
     },
   
     ROUNDING_ANGLE_INCREMENT : {
-        value : 2 * PI / 32 // 32 is TOTAL_DISPLAY_ANGLES, but literal is needed since defineProperties hasn't finished yet
+        value : 2 * Math.PI / 32 // 32 is TOTAL_DISPLAY_ANGLES, but literal is needed since defineProperties hasn't finished yet
     }
 });
 
@@ -85,8 +80,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
 
     getDisplayAngle : {
         value : function (angle) {
-            var displayedAngle = round(angle / PhysicsObject.ROUNDING_ANGLE_INCREMENT) * PhysicsObject.ROUNDING_ANGLE_INCREMENT;
-            return displayedAngle;
+            return Math.round(angle / PhysicsObject.ROUNDING_ANGLE_INCREMENT) * PhysicsObject.ROUNDING_ANGLE_INCREMENT;
         }
     },
 
@@ -94,20 +88,28 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         value : function (dt) {
             // Limit acceleration to max acceleration
             this.acceleration.limit(this.maxAcceleration);
-
+          
             // Apply an acceleration matching the displayed direction for the physics object
-            var displayAcceleration = this.acceleration.clone().setAngle(this.getDisplayAngle(this.acceleration.getAngle()));
-            this.velocity.add(displayAcceleration.multiply(dt));
+            var displayAccelerationAngle = this.getDisplayAngle(this.acceleration.getAngle());
+            var accelerationMag          = this.acceleration.getMagnitude();
+
+            this.velocity._x += Math.cos(displayAccelerationAngle) * accelerationMag * dt;
+            this.velocity._y += Math.sin(displayAccelerationAngle) * accelerationMag * dt;
 
             // Limit velocity to max speed
             this.velocity.limit(this.maxSpeed);
 
             // Apply the current velocity
-            this.transform.position.add(this.velocity.clone().multiply(dt));
+            this.transform.position._x += this.velocity._x * dt;
+            this.transform.position._y += this.velocity._y * dt;
 
             this.transform.rotation = this.forward.getAngle();
           
-            GameObject.prototype.update.call(this, dt);
+            // Optimization: Includes GameObject's update() via copypaste to prevent call()
+            if (this.currentState !== undefined) {
+                this.currentState.update(dt);
+                this._setSprite(this.currentState.sprite);
+            }
         }
     },
 
@@ -136,13 +138,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
                 colliding : false,
                 direction : null
             };
-
-            // (Optimization) Determine if a collision check is necessary.
-            // - If both objects aren't solid, they cannot collide.
-            // - If both objects are fixed, they can never collide.
-            if ((!this.solid && !physObj.solid) || (this.fixed && physObj.fixed)) {
-                return collisionData;
-            }
           
             var cache      = this.calculationCache;
             var otherCache = physObj.calculationCache;
@@ -223,10 +218,10 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
                         var intersectY = (a1 * c2 - a2 * c1) / determinant;
 
                         var intersecting = (
-                            min(p1.x, p2.x) <= intersectX && intersectX <= max(p1.x, p2.x) &&
-                            min(p1.y, p2.y) <= intersectY && intersectY <= max(p1.y, p2.y) &&
-                            min(q1.x, q2.x) <= intersectX && intersectX <= max(q1.x, q2.x) &&
-                            min(q1.y, q2.y) <= intersectY && intersectY <= max(q1.y, q2.y)
+                            Math.min(p1.x, p2.x) <= intersectX && intersectX <= Math.max(p1.x, p2.x) &&
+                            Math.min(p1.y, p2.y) <= intersectY && intersectY <= Math.max(p1.y, p2.y) &&
+                            Math.min(q1.x, q2.x) <= intersectX && intersectX <= Math.max(q1.x, q2.x) &&
+                            Math.min(q1.y, q2.y) <= intersectY && intersectY <= Math.max(q1.y, q2.y)
                         );
 
                         if (intersecting) {
@@ -245,10 +240,13 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
 
             // Determine collision direction
             if (collisionData.colliding) {
-                var orthogonalVector = new geom.Vec2(
-                  intersectionSegmentV2.x - intersectionSegmentV1.x,
-                  intersectionSegmentV2.y - intersectionSegmentV1.y
-                ).getOrthogonal();
+                // Use the cached trash vector
+                var orthogonalVector = tempVector;
+              
+                // Take the difference between the intersection points, then
+                // get the orthogonal (x, y) => (y, -x)
+                orthogonalVector._x = intersectionSegmentV2.y - intersectionSegmentV1.y;
+                orthogonalVector._y = intersectionSegmentV1.x - intersectionSegmentV2.x;
                 orthogonalVector.normalize();
 
                 collisionData.direction = orthogonalVector;
@@ -266,7 +264,10 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
                 if (collisionData.direction) {
                     this.velocity._x = collisionData.direction._x;
                     this.velocity._y = collisionData.direction._y;
-                    this.transform.position.add(collisionData.direction.multiply(2));
+                  
+                    // TODO: Replace 2 with a constant for "bouncing" off of objects
+                    this.transform.position._x += collisionData.direction._x * 2;
+                    this.transform.position._y += collisionData.direction._y * 2;
                 }
             }
         }
@@ -274,18 +275,22 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
   
     cacheCalculations: {
         value: function () {
-            GameObject.prototype.cacheCalculations.call(this);
-            
-            var width        = this.calculationCache.width;
-            var height       = this.calculationCache.height;
+            // Optimization: Includes GameObject's cacheCalculations() via copypaste to prevent call()
+            var position     = this.transform.position;
+            var width        = this.scale.x * this.getLocalBounds().width;
+            var height       = this.scale.y * this.getLocalBounds().height;
             var velocity     = this.velocity;
             var acceleration = this.acceleration;
             var rotation     = this.transform.rotation;
             
             // Optimization for calculating aabb width and height
-            var absCosRotation = abs(cos(rotation));
-            var absSinRotation = abs(sin(rotation));
-            
+            var absCosRotation = Math.abs(Math.cos(rotation));
+            var absSinRotation = Math.abs(Math.sin(rotation));
+
+            this.calculationCache.x          = position._x;
+            this.calculationCache.y          = position._y;
+            this.calculationCache.width      = width;
+            this.calculationCache.height     = height;
             this.calculationCache.vx         = velocity._x;
             this.calculationCache.vy         = velocity._y;
             this.calculationCache.ax         = acceleration._x;

@@ -149,19 +149,17 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   canSee : {
     value : function (obj) {
-      var cache     = obj.calculationCache;
-      var width     = cache.aabbWidth;
-      var height    = cache.aabbHeight;
-      var objOffset = new geom.Vec2(
-        cache.x - this.camera.position.x,
-        cache.y - this.camera.position.y
-      );
+      var cache      = obj.calculationCache;
+      var width      = cache.aabbWidth;
+      var height     = cache.aabbHeight;
+      var objOffsetX = cache.x - this.camera.position.x;
+      var objOffsetY = cache.y - this.camera.position.y;
       
       // If the game object is too far away, it currently cannot be seen
-      return (objOffset.x + (width  >> 1) >= -this._screenOffset.x / this.camera.zoom &&
-              objOffset.x - (width  >> 1) <=  this._screenOffset.x / this.camera.zoom &&
-              objOffset.y + (height >> 1) >= -this._screenOffset.y / this.camera.zoom &&
-              objOffset.y - (height >> 1) <=  this._screenOffset.y / this.camera.zoom);
+      return (objOffsetX + (width  >> 1) >= -this._screenOffset._x / this.camera.zoom &&
+              objOffsetX - (width  >> 1) <=  this._screenOffset._x / this.camera.zoom &&
+              objOffsetY + (height >> 1) >= -this._screenOffset._y / this.camera.zoom &&
+              objOffsetY - (height >> 1) <=  this._screenOffset._y / this.camera.zoom);
     }
   },
 
@@ -176,11 +174,16 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var nearbyObjectLength  = this._nearbyGameObjects.length;
       
       for (var i = 0; i < nearbyObjectLength; i++) {
+        this._nearbyGameObjects[i].customData.quadTreeIndex = null;
         this._quadtree.insert(this._nearbyGameObjects[i]);
       }
 
       for (var i = 0; i < nearbyObjectLength; i++) {
         this._nearbyGameObjects[i].update(dt);
+      }
+      
+      // Seems to be faster to have this loop in addition to the update loop above
+      for (var i = 0; i < nearbyObjectLength; i++) {
         this._nearbyGameObjects[i].cacheCalculations();
       }
 
@@ -191,6 +194,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       this._stage.children.length = 0;
       var all = this.getGameObjects();
       
+      // This seems to perform faster than using filter()
       for (let obj of all) {
         if (this.canSee(obj)) {
           this._stage.addChild(obj);
@@ -240,10 +244,8 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       this._stage.y -= this.camera.position.y;
       
       // Update the screen offset
-      this._screenOffset = new geom.Vec2(
-        this.canvas.width  * 0.5,
-        this.canvas.height * 0.5
-      );
+      this._screenOffset._x = this.canvas.width  * 0.5;
+      this._screenOffset._y = this.canvas.height * 0.5;
     }
   },
   
@@ -296,26 +298,25 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var chunkRatioY = (totalChunksVertical   - 1) / dy;
       for (var i = 0; i < gameObjectLength; i++) {
         var cache  = gameObjects[i].calculationCache;
-        var chunkX = Math.floor(chunkRatioX * (cache.x - minX));
-        var chunkY = Math.floor(chunkRatioY * (cache.y - minY));
+        var chunkX = chunkRatioX * (cache.x - minX) || 0;
+        var chunkY = chunkRatioY * (cache.y - minY) || 0;
 
-        if (isNaN(chunkX)) chunkX = 0;
-        if (isNaN(chunkY)) chunkY = 0;
-
-        this._chunks[chunkX][chunkY].push(gameObjects[i]);
+        // Optimization: Math.floor(x) => x | 0
+        this._chunks[chunkX | 0][chunkY | 0].push(gameObjects[i]);
       }
 
-      // Finally set values for chunk size and create a new quad tree
+      // Finally set values for chunk size
       this._chunkConfig.minX = minX;
       this._chunkConfig.minY = minY;
       this._chunkConfig.maxX = maxX;
       this._chunkConfig.maxY = maxY;
-      this._quadtree = new datastructure.Quadtree(0, {
-        x:      minX,
-        y:      minY,
-        width:  dx,
-        height: dy
-      });
+      
+      // Reset the quad tree (instead of creating a new one every frame)
+      this._quadtree.clear();
+      this._quadtree.bounds.x      = minX;
+      this._quadtree.bounds.y      = minY;
+      this._quadtree.bounds.width  = dx;
+      this._quadtree.bounds.height = dy;
     }
   },
   
@@ -414,18 +415,23 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
           var obj1 = possibleCollisions[j];
 
           if (obj1 && obj0 !== obj1) {
-            if (obj0.customData.collisionList.indexOf(obj1.customData.collisionId) === -1) {
-              var collisionData = obj0.checkCollision(obj1);
+            // (Optimization) Determine if a collision check is necessary.
+            // - If both objects aren't solid, they cannot collide.
+            // - If both objects are fixed, they can never collide.
+            if ((obj0.solid || obj1.solid) && (!obj0.fixed || !obj1.fixed)) {
+              if (obj0.customData.collisionList.indexOf(obj1.customData.collisionId) === -1) {
+                var collisionData = obj0.checkCollision(obj1);
 
-              if (collisionData.colliding) {
-                obj0.resolveCollision(obj1, collisionData);
-                obj0.customData.collisionList.push(obj1.customData.collisionId);
+                if (collisionData.colliding) {
+                  obj0.resolveCollision(obj1, collisionData);
+                  obj0.customData.collisionList.push(obj1.customData.collisionId);
 
-                // Switch direction of collision for other object
-                collisionData.direction.multiply(-1);
+                  // Switch direction of collision for other object
+                  collisionData.direction.multiply(-1);
 
-                obj1.resolveCollision(obj0, collisionData);
-                obj1.customData.collisionList.push(obj0.customData.collisionId);
+                  obj1.resolveCollision(obj0, collisionData);
+                  obj1.customData.collisionList.push(obj0.customData.collisionId);
+                }
               }
             }
           }

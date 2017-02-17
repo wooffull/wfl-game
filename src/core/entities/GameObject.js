@@ -45,6 +45,8 @@ Object.defineProperties(GameObject, {
 GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
   update: {
     value: function (dt) {
+      // The contents of this function should be copypasted into
+      // PhysicsObject's cacheCalculations (for optimization)
       if (this.currentState !== undefined) {
         this.currentState.update(dt);
         this._setSprite(this.currentState.sprite);
@@ -109,6 +111,8 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
   
   cacheCalculations: {
     value: function () {
+      // The contents of this function should be copypasted into
+      // PhysicsObject's cacheCalculations (for optimization)
       var position = this.transform.position;
       var width    = this.width;
       var height   = this.height;
