@@ -30,6 +30,7 @@ var Scene = function (canvas) {
     maxY: -Infinity
   };
 
+  this.canvas   = canvas;
   this.camera   = new cameras.Camera();
   this.bg       = new backgrounds.StaticBackground();
   this.keyboard = undefined;
@@ -40,7 +41,7 @@ var Scene = function (canvas) {
 
 Object.defineProperties(Scene, {
   DEFAULT_CHUNK_SIZE : {
-    value : 128 * 15
+    value : 64 * 10
   }
 }),
 
@@ -97,7 +98,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       layer.push(obj);
       obj.layer = layerId;
       
-      this._stage.addChild(obj);
+      //this._stage.addChild(obj);
       
       // Cache game object's calculations before update is called.
       // The cache calculations are needed in the quad tree (which is
@@ -148,7 +149,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   canSee : {
     value : function (obj) {
-      var cache     =  obj.calculationCache;
+      var cache     = obj.calculationCache;
       var width     = cache.aabbWidth;
       var height    = cache.aabbHeight;
       var objOffset = new geom.Vec2(
@@ -185,6 +186,16 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
 
       this.camera.update(dt);
       this._handleCollisions(this._nearbyGameObjects);
+      
+      // Clear all children then add only the ones that can be seen
+      this._stage.children.length = 0;
+      var all = this.getGameObjects();
+      
+      for (let obj of all) {
+        if (this.canSee(obj)) {
+          this._stage.addChild(obj);
+        }
+      }
     }
   },
 
@@ -228,29 +239,16 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       this._stage.x -= this.camera.position.x;
       this._stage.y -= this.camera.position.y;
       
-      /*
-      ctx.save();
-      
       // Update the screen offset
       this._screenOffset = new geom.Vec2(
-        ctx.canvas.width  * 0.5,
-        ctx.canvas.height * 0.5
+        this.canvas.width  * 0.5,
+        this.canvas.height * 0.5
       );
-
-      this.bg.draw(ctx, this.camera);
-
-      // Move the screen to the camera's position, then center that
-      // position in the middle of the screen
-      ctx.translate(this._screenOffset.x, this._screenOffset.y);
-      ctx.scale(this.camera.zoom, this.camera.zoom);
-      ctx.translate(-this.camera.position.x, -this.camera.position.y);
-      */
     }
   },
   
   _afterDraw : {
     value : function (renderer) {
-      //ctx.restore();
     }
   },
   

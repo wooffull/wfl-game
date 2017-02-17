@@ -88,7 +88,7 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
    * Sets the scene to be rendered in the game
    */
   setScene : {
-    value : function (scene, t) {
+    value : function (scene) {
       if (this._scene) {
         this.stage.removeChild(this._scene._stage);
         this._scene.keyboard = undefined;
@@ -100,16 +100,6 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
       scene.renderer = this.renderer;
       this._scene    = scene;
       this.stage.addChild(scene._stage);
-      
-      var con = new PIXI.Container();
-      scene._stage.addChild(con);
-      var a = new PIXI.Sprite(t);
-      a.anchor.set(0.5);
-      con.addChild(a);
-      a = new PIXI.Sprite(t);
-      a.position.set(50, 50);
-      a.anchor.set(0.5);
-      con.addChild(a);
     }
   }
 }));

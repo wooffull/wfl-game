@@ -245,7 +245,10 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
 
             // Determine collision direction
             if (collisionData.colliding) {
-                var orthogonalVector = geom.Vec2.subtract(intersectionSegmentV2, intersectionSegmentV1).getOrthogonal();
+                var orthogonalVector = new geom.Vec2(
+                  intersectionSegmentV2.x - intersectionSegmentV1.x,
+                  intersectionSegmentV2.y - intersectionSegmentV1.y
+                ).getOrthogonal();
                 orthogonalVector.normalize();
 
                 collisionData.direction = orthogonalVector;
