@@ -256,7 +256,7 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
                 }
             }
 
-            objs.concat(this.objects);
+            objs.push.apply(objs, this.objects);
 
             return objs;
         }
