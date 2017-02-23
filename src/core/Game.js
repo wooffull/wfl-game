@@ -38,6 +38,8 @@ var Game = function (canvasDisplayObject) {
   this.ticker.add(this.update.bind(this));
   
   this.renderer.backgroundColor = 0x123456;
+  
+  window.addEventListener('resize', this._onResize.bind(this));
 };
 
 Game.prototype = Object.freeze(Object.create(Game.prototype, {
@@ -100,6 +102,14 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
       scene.renderer = this.renderer;
       this._scene    = scene;
       this.stage.addChild(scene._stage);
+    }
+  },
+  
+  _onResize : {
+    value: function (e) {
+      if (this._scene) {
+        this._scene._onResize(e);
+      }
     }
   }
 }));

@@ -139,13 +139,25 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
       // The contents of this function should be copypasted into
       // PhysicsObject's cacheCalculations (for optimization)
       var position = this.transform.position;
-      var width    = this.width;
-      var height   = this.height;
+      var width    = this.scale.x * this.getLocalBounds().width;
+      var height   = this.scale.y * this.getLocalBounds().height;
+      var rotation = this.transform.rotation;
+
+      // Optimization for calculating aabb width and height
+      var absCosRotation = Math.abs(Math.cos(rotation));
+      var absSinRotation = Math.abs(Math.sin(rotation));
       
-      this.calculationCache.x      = position._x;
-      this.calculationCache.y      = position._y;
-      this.calculationCache.width  = width;
-      this.calculationCache.height = height;
+      this.calculationCache.x          = position._x;
+      this.calculationCache.y          = position._y;
+      this.calculationCache.width      = width;
+      this.calculationCache.height     = height;
+      this.calculationCache.rotation   = rotation;
+      this.calculationCache.aabbWidth  =
+          absCosRotation * width +
+          absSinRotation * height;
+      this.calculationCache.aabbHeight =
+          absCosRotation * height +
+          absSinRotation * width;
     }
   },
   

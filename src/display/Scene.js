@@ -20,14 +20,16 @@ var Scene = function (canvas) {
     height: canvas.height
   });
   
-  this._nearbyGameObjects = [];
-  this._chunks            = [];
-  this._chunkConfig       = {
-    size: Scene.DEFAULT_CHUNK_SIZE,
-    minX: Infinity,
-    minY: Infinity,
-    maxX: -Infinity,
-    maxY: -Infinity
+  this._nonPartitionedGameObjects = []; // Cleared every frame
+  this._nearbyGameObjects         = [];
+  this._buckets                   = [];
+  this._bucketConfig              = {
+    size:      Math.max(canvas.width, canvas.height) * 0.5,
+    minX:      Infinity,
+    minY:      Infinity,
+    maxX:     -Infinity,
+    maxY:     -Infinity,
+    forceCalc: false
   };
 
   this.canvas   = canvas;
@@ -40,8 +42,8 @@ var Scene = function (canvas) {
 };
 
 Object.defineProperties(Scene, {
-  DEFAULT_CHUNK_SIZE : {
-    value : 64 * 10
+  BUCKET_PADDING_RATIO : {
+    value : 0.5
   }
 }),
 
@@ -98,12 +100,20 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       layer.push(obj);
       obj.layer = layerId;
       
-      //this._stage.addChild(obj);
-      
       // Cache game object's calculations before update is called.
       // The cache calculations are needed in the quad tree (which is
       // updated in update())
       obj.cacheCalculations();
+      
+      // If the new object won't fit in any bucket, then all buckets
+      // will have to be re-partitioned
+      if (!this._bucketConfig.forceCalc) {
+        if (this._outOfBucketsRange(obj)) {
+          this._bucketConfig.forceCalc = true;
+        }
+      }
+      
+      this._nonPartitionedGameObjects.push(obj);
     }
   },
 
@@ -144,22 +154,36 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
           }
         }
       }
+      
+      // Remove the game object from its bucket
+      var bucketIndices = this._findSurroundingBucketIndices(obj, 0)[0];
+      var bucket        = this._buckets[bucketIndices.x][bucketIndices.y];
+      var indexInBucket = bucket.indexOf(obj);
+      if (indexInBucket >= 0) {
+        bucket.splice(indexInBucket, 1);
+      }
+      
+      // Remove the game object from nearby game objects
+      var indexInNearby = this._nearbyGameObjects.indexOf(obj);
+      if (indexInNearby >= 0) {
+        this._nearbyGameObjects.splice(indexInNearby, 1);
+      }
     }
   },
   
   canSee : {
     value : function (obj) {
       var cache      = obj.calculationCache;
-      var width      = cache.aabbWidth;
-      var height     = cache.aabbHeight;
+      var halfWidth  = cache.aabbWidth  >> 1;
+      var halfHeight = cache.aabbHeight >> 1;
       var objOffsetX = cache.x - this.camera.position.x;
       var objOffsetY = cache.y - this.camera.position.y;
       
       // If the game object is too far away, it currently cannot be seen
-      return (objOffsetX + (width  >> 1) >= -this._screenOffset._x / this.camera.zoom &&
-              objOffsetX - (width  >> 1) <=  this._screenOffset._x / this.camera.zoom &&
-              objOffsetY + (height >> 1) >= -this._screenOffset._y / this.camera.zoom &&
-              objOffsetY - (height >> 1) <=  this._screenOffset._y / this.camera.zoom);
+      return (objOffsetX + halfWidth  >= -this._screenOffset._x / this.camera.zoom &&
+              objOffsetX - halfWidth  <=  this._screenOffset._x / this.camera.zoom &&
+              objOffsetY + halfHeight >= -this._screenOffset._y / this.camera.zoom &&
+              objOffsetY - halfHeight <=  this._screenOffset._y / this.camera.zoom);
     }
   },
 
@@ -168,8 +192,9 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    */
   update : {
     value : function (dt) {
-      // (Optimization) Partition all the game objects into chunks
-      this._partitionChunks();
+      this._updateBuckets();
+      this.camera.update(dt);
+      
       this._nearbyGameObjects = this._findSurroundingGameObjects(this.camera);
       var nearbyObjectLength  = this._nearbyGameObjects.length;
       
@@ -188,7 +213,6 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         this._nearbyGameObjects[i].cacheCalculations();
       }
 
-      this.camera.update(dt);
       this._handleCollisions(this._nearbyGameObjects);
     }
   },
@@ -200,7 +224,9 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     value : function (renderer) {
       // Clear all children then add only the ones that can be seen
       this._stage.children.length = 0;
-      var all = this.getGameObjects();
+      var all = this._findSurroundingGameObjects(this.camera, 2).sort(
+        (a, b) => a.layer - b.layer
+      );
       
       // This seems to perform faster than using filter()
       for (let obj of all) {
@@ -236,18 +262,79 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     }
   },
   
-  _partitionChunks : {
-    value : function () {
-      this._chunks = [];
+  _outOfBucketsRange: {
+    value: function (gameObject) {
+      var cache      = gameObject.calculationCache;
+      var halfWidth  = cache.aabbWidth  >> 1;
+      var halfHeight = cache.aabbHeight >> 1;
+      var x          = cache.x;
+      var y          = cache.y;
+      var bucketMinX = this._bucketConfig.minX;
+      var bucketMaxX = this._bucketConfig.maxX;
+      var bucketMinY = this._bucketConfig.minY;
+      var bucketMaxY = this._bucketConfig.maxY;
+      
+      return (x - halfWidth  <= bucketMinX ||
+              x + halfWidth  >= bucketMaxX ||
+              y - halfHeight <= bucketMinY ||
+              y + halfHeight >= bucketMaxY);
+    }
+  },
+  
+  _updateBuckets: {
+    value: function () {
+      var forceCalc = this._bucketConfig.forceCalc;
 
-      var minX                  =  Infinity;
-      var minY                  =  Infinity;
-      var maxY                  = -Infinity;
-      var maxX                  = -Infinity;
-      var totalChunksHorizontal = 0;
-      var totalChunksVertical   = 0;
-      var gameObjects           = this.getGameObjects();
-      var gameObjectLength      = gameObjects.length;
+      // Check if any nearby game objects are out of any bucket's range
+      if (!forceCalc) {
+        for (const obj of this._nearbyGameObjects) {
+          if (this._outOfBucketsRange(obj)) {
+            forceCalc = true;
+            break;
+          }
+        }
+      }
+
+      // If all buckets need to be calculated, do so
+      if (forceCalc) {
+        var all = this.getGameObjects();
+        this._createBuckets(all);
+        this._partitionGameObjectsIntoBuckets(all);
+        
+      // Otherwise, only update the buckets near the camera
+      } else {
+        var neighborBucketIndices = this._findSurroundingBucketIndices(this.camera);
+
+        for (var i = 0; i < neighborBucketIndices.length; i++) {
+          var bucketX = neighborBucketIndices[i].x;
+          var bucketY = neighborBucketIndices[i].y;
+          this._buckets[bucketX][bucketY] = [];
+        }
+
+        this._partitionGameObjectsIntoBuckets(this._nearbyGameObjects.concat(this._nonPartitionedGameObjects));
+      }
+      
+      this._nonPartitionedGameObjects = [];
+      this._bucketConfig.forceCalc = false;
+      
+      // Reset the quad tree (instead of creating a new one every frame)
+      this._quadtree.clear();
+      this._quadtree.bounds.x      = this._bucketConfig.minX;
+      this._quadtree.bounds.y      = this._bucketConfig.minY;
+      this._quadtree.bounds.width  = this._bucketConfig.maxX - this._bucketConfig.minX;
+      this._quadtree.bounds.height = this._bucketConfig.maxY - this._bucketConfig.minY;
+    }
+  },
+  
+  _createBuckets: {
+    value: function (gameObjects) {
+      this._buckets = [];
+      
+      var minX             =  Infinity;
+      var minY             =  Infinity;
+      var maxY             = -Infinity;
+      var maxX             = -Infinity;
+      var gameObjectLength = gameObjects.length;
 
       // Find min and max positions
       for (var i = 0; i < gameObjectLength; i++) {
@@ -258,108 +345,122 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         maxX = Math.max(cache.x, maxX);
         maxY = Math.max(cache.y, maxY);
       }
-      
-      // Optimization: Calculate dx and dy ahead of time so they don't need to be calculated in
-      // every iteration of an upcoming loop
+
       var dx = maxX - minX;
       var dy = maxY - minY;
+      
+      // Scale up the dx and dy to allow "padding" for the buckets.
+      // This will ideally reduce the amount of updates needed for buckets.
+      minX -= dx * Scene.BUCKET_PADDING_RATIO;
+      maxX += dx * Scene.BUCKET_PADDING_RATIO;
+      minY -= dy * Scene.BUCKET_PADDING_RATIO;
+      maxY += dy * Scene.BUCKET_PADDING_RATIO;
+      dx *= 1 + 2 * Scene.BUCKET_PADDING_RATIO;
+      dy *= 1 + 2 * Scene.BUCKET_PADDING_RATIO;
+      
+      var totalBucketsHorizontal = Math.max(Math.ceil(dx / this._bucketConfig.size), 1);
+      var totalBucketsVertical   = Math.max(Math.ceil(dy / this._bucketConfig.size), 1);
 
-      totalChunksHorizontal = Math.max(Math.ceil(dx / this._chunkConfig.size), 1);
-      totalChunksVertical   = Math.max(Math.ceil(dy / this._chunkConfig.size), 1);
+      for (var i = 0; i < totalBucketsHorizontal; i++) {
+        this._buckets[i] = [];
 
-      for (var i = 0; i < totalChunksHorizontal; i++) {
-        this._chunks[i] = [];
-
-        for (var j = 0; j < totalChunksVertical; j++) {
-          this._chunks[i][j] = [];
+        for (var j = 0; j < totalBucketsVertical; j++) {
+          this._buckets[i][j] = [];
         }
       }
 
-      // Add game objects to the chunk they're located in
-      var chunkRatioX = (totalChunksHorizontal - 1) / dx;
-      var chunkRatioY = (totalChunksVertical   - 1) / dy;
-      for (var i = 0; i < gameObjectLength; i++) {
-        var cache  = gameObjects[i].calculationCache;
-        var chunkX = chunkRatioX * (cache.x - minX) || 0;
-        var chunkY = chunkRatioY * (cache.y - minY) || 0;
-
-        // Optimization: Math.floor(x) => x | 0
-        this._chunks[chunkX | 0][chunkY | 0].push(gameObjects[i]);
-      }
-
-      // Finally set values for chunk size
-      this._chunkConfig.minX = minX;
-      this._chunkConfig.minY = minY;
-      this._chunkConfig.maxX = maxX;
-      this._chunkConfig.maxY = maxY;
-      
-      // Reset the quad tree (instead of creating a new one every frame)
-      this._quadtree.clear();
-      this._quadtree.bounds.x      = minX;
-      this._quadtree.bounds.y      = minY;
-      this._quadtree.bounds.width  = dx;
-      this._quadtree.bounds.height = dy;
+      // Finally set values for bucket size
+      this._bucketConfig.minX = minX;
+      this._bucketConfig.minY = minY;
+      this._bucketConfig.maxX = maxX;
+      this._bucketConfig.maxY = maxY;
     }
   },
   
-  _findSurroundingChunkIndices : {
-    value : function (gameObject, chunkRadius) {
-      if (typeof chunkRadius === "undefined") chunkRadius = 1;
+  _partitionGameObjectsIntoBuckets: {
+    value: function (gameObjects) {
+      var gameObjectLength       = gameObjects.length;
+      var minX                   = this._bucketConfig.minX;
+      var minY                   = this._bucketConfig.minY;
+      var maxY                   = this._bucketConfig.maxY;
+      var maxX                   = this._bucketConfig.maxX;
+      var dx                     = maxX - minX;
+      var dy                     = maxY - minY;
+      var totalBucketsHorizontal = Math.max(Math.ceil(dx / this._bucketConfig.size), 1);
+      var totalBucketsVertical   = Math.max(Math.ceil(dy / this._bucketConfig.size), 1);
 
-      var totalChunksHorizontal = this._chunks.length;
-      var totalChunksVertical   = this._chunks[0].length;
+      // Add game objects to the bucket they're located in
+      var bucketRatioX = (totalBucketsHorizontal - 1) / dx;
+      var bucketRatioY = (totalBucketsVertical   - 1) / dy;
+      for (var i = 0; i < gameObjectLength; i++) {
+        var cache   = gameObjects[i].calculationCache;
+        var bucketX = bucketRatioX * (cache.x - minX) || 0;
+        var bucketY = bucketRatioY * (cache.y - minY) || 0;
+
+        // Optimization: Math.floor(x) => x | 0
+        this._buckets[bucketX | 0][bucketY | 0].push(gameObjects[i]);
+      }
+    }
+  },
+  
+  _findSurroundingBucketIndices : {
+    value : function (gameObject, bucketRadius) {
+      if (typeof bucketRadius === "undefined") bucketRadius = 1;
+
+      var totalBucketsHorizontal = this._buckets.length;
+      var totalBucketsVertical   = this._buckets[0].length;
       
       // The "||" is needed for the camera, which is not actually a GameObject.
       // TODO: Make camera a GameObject?
-      var cache         = gameObject.calculationCache || gameObject.position;
-      var chunkX        = Math.floor((totalChunksHorizontal - 1) * (cache.x - this._chunkConfig.minX) / (this._chunkConfig.maxX - this._chunkConfig.minX));
-      var chunkY        = Math.floor((totalChunksVertical   - 1) * (cache.y - this._chunkConfig.minY) / (this._chunkConfig.maxY - this._chunkConfig.minY));
+      var cache   = gameObject.calculationCache || gameObject.position;
+      var bucketX = Math.floor((totalBucketsHorizontal - 1) * (cache.x - this._bucketConfig.minX) / (this._bucketConfig.maxX - this._bucketConfig.minX));
+      var bucketY = Math.floor((totalBucketsVertical   - 1) * (cache.y - this._bucketConfig.minY) / (this._bucketConfig.maxY - this._bucketConfig.minY));
 
-      if (isNaN(chunkX)) chunkX = 0;
-      if (isNaN(chunkY)) chunkY = 0;
+      if (isNaN(bucketX)) bucketX = 0;
+      if (isNaN(bucketY)) bucketY = 0;
 
-      var nearChunksIndices = [];
+      var nearBucketsIndices = [];
 
-      for (var i = -chunkRadius; i <= chunkRadius; i++) {
-        var refChunkX = chunkX + i;
+      for (var i = -bucketRadius; i <= bucketRadius; i++) {
+        var refBucketX = bucketX + i;
 
-        for (var j = -chunkRadius; j <= chunkRadius; j++) {
-          var refChunkY = chunkY + j;
+        for (var j = -bucketRadius; j <= bucketRadius; j++) {
+          var refBucketY = bucketY + j;
 
-          if (refChunkX >= 0 && refChunkY >= 0 && refChunkX < totalChunksHorizontal && refChunkY < totalChunksVertical) {
-            nearChunksIndices.push({x: refChunkX, y: refChunkY});
+          if (refBucketX >= 0 && refBucketY >= 0 && refBucketX < totalBucketsHorizontal && refBucketY < totalBucketsVertical) {
+            nearBucketsIndices.push({x: refBucketX, y: refBucketY});
           }
         }
       }
 
-      return nearChunksIndices;
+      return nearBucketsIndices;
     }
   },
   
-  _findSurroundingChunks : {
-    value : function (gameObject, chunkRadius) {
-      var nearChunkIndices     = this._findSurroundingChunkIndices(gameObject, chunkRadius);
-      var nearChunkIndexLength = nearChunkIndices.length;
-      var nearChunks           = [];
+  _findSurroundingBuckets : {
+    value : function (gameObject, bucketRadius) {
+      var nearBucketIndices     = this._findSurroundingBucketIndices(gameObject, bucketRadius);
+      var nearBucketIndexLength = nearBucketIndices.length;
+      var nearBuckets           = [];
 
-      for (var i = 0; i < nearChunkIndexLength; i++) {
-        var x = nearChunkIndices[i].x;
-        var y = nearChunkIndices[i].y;
-        nearChunks.push(this._chunks[x][y]);
+      for (var i = 0; i < nearBucketIndexLength; i++) {
+        var x = nearBucketIndices[i].x;
+        var y = nearBucketIndices[i].y;
+        nearBuckets.push(this._buckets[x][y]);
       }
 
-      return nearChunks;
+      return nearBuckets;
     }
   },
   
   _findSurroundingGameObjects : {
-    value : function (gameObject, chunkRadius) {
-      var nearChunks      = this._findSurroundingChunks(gameObject, chunkRadius);
-      var nearChunkLength = nearChunks.length;
-      var gameObjects     = [];
+    value : function (gameObject, bucketRadius) {
+      var nearBuckets      = this._findSurroundingBuckets(gameObject, bucketRadius);
+      var nearBucketLength = nearBuckets.length;
+      var gameObjects      = [];
 
-      for (var i = 0; i < nearChunkLength; i++) {
-        gameObjects = gameObjects.concat(nearChunks[i]);
+      for (var i = 0; i < nearBucketLength; i++) {
+        gameObjects = gameObjects.concat(nearBuckets[i]);
       }
 
       return gameObjects;
@@ -423,6 +524,13 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
           }
         }
       }
+    }
+  },
+  
+  _onResize: {
+    value: function (e) {
+      this._bucketConfig.size      = Math.max(window.innerWidth, window.innerHeight) * 0.5;
+      this._bucketConfig.forceCalc = true;
     }
   }
 }));
