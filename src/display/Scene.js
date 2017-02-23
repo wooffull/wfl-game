@@ -174,7 +174,9 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var nearbyObjectLength  = this._nearbyGameObjects.length;
       
       for (var i = 0; i < nearbyObjectLength; i++) {
-        this._quadtree.insert(this._nearbyGameObjects[i]);
+        if (this._nearbyGameObjects[i].solid) {
+          this._quadtree.insert(this._nearbyGameObjects[i]);
+        }
       }
 
       for (var i = 0; i < nearbyObjectLength; i++) {
@@ -219,12 +221,9 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   
   _beforeDraw : {
     value : function (renderer) {
-      this._stage.scale.set(1);
-      this._stage.x = renderer.width  * 0.5;
-      this._stage.y = renderer.height * 0.5;
+      this._stage.x = renderer.width  * 0.5 - this.camera.position.x * this.camera.zoom;
+      this._stage.y = renderer.height * 0.5 - this.camera.position.y * this.camera.zoom;
       this._stage.scale.set(this.camera.zoom);
-      this._stage.x -= this.camera.position.x * this.camera.zoom;
-      this._stage.y -= this.camera.position.y * this.camera.zoom;
       
       // Update the screen offset
       this._screenOffset._x = this.canvas.width  * 0.5;
@@ -380,9 +379,13 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         cur.customData.collisionId   = i;
         cur.customData.collisionList = [];
       }
+      
+      // Only directly check collisions for objects that aren't fixed
+      var nonFixedObjects = gameObjects.filter((obj) => !obj.fixed);
+      var nonFixedObjectLength = nonFixedObjects.length;
 
-      for (var i = 0; i < gameObjectLength; i++) {
-        var obj0 = gameObjects[i];
+      for (var i = 0; i < nonFixedObjectLength; i++) {
+        var obj0 = nonFixedObjects[i];
 
         // Skip over certain objects for collision detection because
         // other objects will check against them later
