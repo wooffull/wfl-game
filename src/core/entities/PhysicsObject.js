@@ -22,6 +22,10 @@ var PhysicsObject = function () {
     this.solid = true;
     this.fixed = false;
     this.vertices = [];
+  
+    // If false, the collision vertices in this game object's frame objects
+    // will not rotate with the forward
+    this.allowVertexRotation = true;
 };
 
 Object.defineProperties(PhysicsObject, {
@@ -62,16 +66,18 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             this.forward.rotate(theta);
             this.transform.rotation = this.forward.getAngle();
 
-            for (var stateName in this.states) {
-                var state = this.states[stateName];
+            if (this.allowVertexRotation) {
+              for (var stateName in this.states) {
+                  var state = this.states[stateName];
 
-                for (var i = 0; i < state.frameObjects.length; i++) {
-                    var frameObject = state.frameObjects[i];
+                  for (var i = 0; i < state.frameObjects.length; i++) {
+                      var frameObject = state.frameObjects[i];
 
-                    for (var j = 0; j < frameObject.vertices.length; j++) {
-                        frameObject.vertices[j].rotate(theta);
-                    }
-                }
+                      for (var j = 0; j < frameObject.vertices.length; j++) {
+                          frameObject.vertices[j].rotate(theta);
+                      }
+                  }
+              }
             }
 
             return this;

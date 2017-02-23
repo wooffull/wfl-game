@@ -1,5 +1,7 @@
 "use strict";
 
+const PIXI = require('pixi.js');
+
 /**
  * Reference: http://gamedevelopment.tutsplus.com/tutorials/quick-tip-use-quadtrees-to-detect-likely-collisions-in-2d-space--gamedev-374
  */
@@ -8,7 +10,8 @@ var Quadtree = function (level, bounds) {
     this.objects = [];
     this.bounds = bounds;
     this.nodes = [undefined, undefined, undefined, undefined];
-    this.cachedRetrievals = {};
+  
+    this.debugContainer = new PIXI.Container();
 };
 Object.defineProperties(Quadtree, {
     MAX_OBJECTS : {
@@ -16,31 +19,31 @@ Object.defineProperties(Quadtree, {
     },
 
     MAX_LEVELS : {
-        value : 5
+        value : 6
     }
 });
 Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
     draw : {
-        value : function (ctx) {
+        value : function (container) {
+            this.debugContainer.removeChildren();
+            var graphics = new PIXI.Graphics();
+          
             for (var i = 0; i < this.nodes.length; i++) {
                 if (this.nodes[i] !== undefined) {
-                    this.nodes[i].draw(ctx);
+                    this.nodes[i].draw(container);
                 }
             }
 
-            ctx.save();
-
-            var colorPercentage = (Quadtree.MAX_LEVELS - this.level + 1) / (Quadtree.MAX_LEVELS + 1);
-
-            ctx.strokeStyle = "rgb(256, 256, " + (256 * colorPercentage) + ")";
-            ctx.strokeRect(
+            graphics.lineStyle(1, 0xFFFFFF, 1);
+            graphics.drawRect(
               this.bounds.x,
               this.bounds.y,
               this.bounds.width,
               this.bounds.height
             );
-
-            ctx.restore();
+          
+            this.debugContainer.addChild(graphics);
+            container.addChild(this.debugContainer);
         }
     },
 
@@ -52,14 +55,8 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
             this.objects = [];
 
             for (var i = 0; i < this.nodes.length; i++) {
-                /*if (this.nodes[i] !== undefined) {
-                    //this.nodes[i].clear();
-                    this.nodes[i] = undefined;
-                }*/
                 this.nodes[i] = undefined;
             }
-          
-            this.cachedRetreivals = {};
         }
     },
 
@@ -110,10 +107,6 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
      */
     getIndex : {
         value : function (physObj) {
-            if (physObj.customData.quadTreeIndex !== null) {
-              return physObj.customData.quadTreeIndex;
-            }
-          
             var calculationCache   = physObj.calculationCache;
             var index              = -1;
             var verticalMidpoint   = this.bounds.x + (this.bounds.width  >> 1);
@@ -157,9 +150,6 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
                     index = 7;
                 }
             }
-          
-            // Cache the index for later
-            physObj.customData.quadTreeIndex = index;
 
             return index;
         }
@@ -173,8 +163,6 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
     insert : {
         value : function (physObj) {
             if (this.nodes[0] !== undefined) {
-                // Reset the index so that it gets updated once added
-                physObj.customData.quadTreeIndex = null;
                 var index = this.getIndex(physObj);
 
                 if (index > -1 && index < 4) {
@@ -191,21 +179,21 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
                 }
 
                 var i = 0;
-                var objectsLength = this.objects.length;
-                while (i < objectsLength) {
+                while (i < this.objects.length) {
                     var curObj = this.objects[i];
 
                     if (curObj === undefined) {
                         this.objects.splice(i, 1);
+                        i++;
                     } else {
                         var index = this.getIndex(curObj);
 
                         if (index > -1 && index < 4) {
                             this.nodes[index].insert(this.objects.splice(i, 1)[0]);
+                        } else {
+                          i++;
                         }
                     }
-                  
-                    i++;
                 }
             }
         }
@@ -218,41 +206,32 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
         value : function (objs, physObj) {
             if (this.nodes[0] !== undefined) {
                 var index = this.getIndex(physObj);
-              
-                if (typeof this.cachedRetrievals[index] !== 'undefined') {
-                    objs.concat(this.cachedRetrievals[index]);
-                } else {
-                    var retrievals = [];
-                  
-                    switch (index) {
-                    case 4: // In left quadrants
-                        this.nodes[1].retrieve(retrievals, physObj);
-                        this.nodes[2].retrieve(retrievals, physObj);
-                        break;
-                    case 5: // In right quadrants
-                        this.nodes[0].retrieve(retrievals, physObj);
-                        this.nodes[3].retrieve(retrievals, physObj);
-                        break;
-                    case 6: // In top quadrants
-                        this.nodes[0].retrieve(retrievals, physObj);
-                        this.nodes[1].retrieve(retrievals, physObj);
-                        break;
-                    case 7: // In bottom quadrants
-                        this.nodes[2].retrieve(retrievals, physObj);
-                        this.nodes[3].retrieve(retrievals, physObj);
-                        break;
-                    case -1: // In all quadrants
-                        this.nodes[0].retrieve(retrievals, physObj);
-                        this.nodes[1].retrieve(retrievals, physObj);
-                        this.nodes[2].retrieve(retrievals, physObj);
-                        this.nodes[3].retrieve(retrievals, physObj);
-                        break;
-                    default: // In a single quadrant
-                        this.nodes[index].retrieve(retrievals, physObj);
-                    }
-                  
-                    this.cachedRetrievals[index] = retrievals;
-                    objs.concat(retrievals);
+
+                switch (index) {
+                case 4: // In left quadrants
+                    this.nodes[1].retrieve(objs, physObj);
+                    this.nodes[2].retrieve(objs, physObj);
+                    break;
+                case 5: // In right quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                case 6: // In top quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[1].retrieve(objs, physObj);
+                    break;
+                case 7: // In bottom quadrants
+                    this.nodes[2].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                case -1: // In all quadrants
+                    this.nodes[0].retrieve(objs, physObj);
+                    this.nodes[1].retrieve(objs, physObj);
+                    this.nodes[2].retrieve(objs, physObj);
+                    this.nodes[3].retrieve(objs, physObj);
+                    break;
+                default: // In a single quadrant
+                    this.nodes[index].retrieve(objs, physObj);
                 }
             }
 

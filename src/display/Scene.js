@@ -174,7 +174,6 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var nearbyObjectLength  = this._nearbyGameObjects.length;
       
       for (var i = 0; i < nearbyObjectLength; i++) {
-        this._nearbyGameObjects[i].customData.quadTreeIndex = null;
         this._quadtree.insert(this._nearbyGameObjects[i]);
       }
 
@@ -189,17 +188,6 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
 
       this.camera.update(dt);
       this._handleCollisions(this._nearbyGameObjects);
-      
-      // Clear all children then add only the ones that can be seen
-      this._stage.children.length = 0;
-      var all = this.getGameObjects();
-      
-      // This seems to perform faster than using filter()
-      for (let obj of all) {
-        if (this.canSee(obj)) {
-          this._stage.addChild(obj);
-        }
-      }
     }
   },
 
@@ -208,29 +196,24 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    */
   draw : {
     value : function (renderer) {
-      //renderer.render(this._stage);
-      /*
-      var gameObjects = this.getGameObjects();
-
-      for (var i = 0; i < gameObjects.length; i++) {
-        var obj = gameObjects[i];
-        
-        // If the game object is too far away, don't draw it!
+      // Clear all children then add only the ones that can be seen
+      this._stage.children.length = 0;
+      var all = this.getGameObjects();
+      
+      // This seems to perform faster than using filter()
+      for (let obj of all) {
         if (this.canSee(obj)) {
-          ctx.save();
-          ctx.translate(obj.position.x, obj.position.y);
-          obj.draw(ctx);
-          debug() && obj.drawDebug(ctx);
-          ctx.restore();
+          if (debug()) {
+            obj.drawDebug(this._stage);
+          }
+          
+          this._stage.addChild(obj);
         }
       }
-
+      
       if (debug()) {
-        ctx.save();
-        this._quadtree.draw(ctx);
-        ctx.restore();
+        this._quadtree.draw(this._stage);
       }
-    }*/
     }
   },
   
@@ -240,8 +223,8 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       this._stage.x = renderer.width  * 0.5;
       this._stage.y = renderer.height * 0.5;
       this._stage.scale.set(this.camera.zoom);
-      this._stage.x -= this.camera.position.x;
-      this._stage.y -= this.camera.position.y;
+      this._stage.x -= this.camera.position.x * this.camera.zoom;
+      this._stage.y -= this.camera.position.y * this.camera.zoom;
       
       // Update the screen offset
       this._screenOffset._x = this.canvas.width  * 0.5;
