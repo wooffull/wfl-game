@@ -13,7 +13,7 @@ var GameObject = function () {
   PIXI.Container.call(this);
   
   // Optimization: Use transform.position to avoid the getter for position
-  this.transform.position = new geom.Vec2(this.position.x, this.position.y, this.position.cb, this.position.scope);
+  this.transform.position = new geom.Vec2(this.position.x, this.position.y);
   this.vertices           = undefined;
   this.states             = {};
   this.currentState       = undefined;
