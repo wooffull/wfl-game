@@ -4,6 +4,10 @@ const PIXI    = require('pixi.js');
 
 const display = require('../display');
 const input   = require('../input');
+const debug   = require('../debug');
+
+// Increments with every game created
+var currentId = 0;
 
 var Game = function (canvasDisplayObject) {
   this.canvas = new display.canvas.create(canvasDisplayObject);
@@ -14,17 +18,19 @@ var Game = function (canvasDisplayObject) {
     return;
   }
 
-  this.pixi               = PIXI;
-  this.pixiApp            = new PIXI.Application(this.canvas.width, this.canvas.height, {view: this.canvas});
-  this.stage              = this.pixiApp.stage;
-  this.renderer           = this.pixiApp.renderer;
-  this.ticker             = this.pixiApp.ticker;
-  this.loader             = PIXI.loader;
+  this.pixi     = PIXI;
+  this.pixiApp  = new PIXI.Application(this.canvas.width, this.canvas.height, {view: this.canvas});
+  this.stage    = this.pixiApp.stage;
+  this.renderer = this.pixiApp.renderer;
+  this.ticker   = this.pixiApp.ticker;
+  this.loader   = PIXI.loader;
   
-  //this.ctx                = this.canvas.getContext('2d');
-  this.keyboard           = new input.Keyboard();
-  this.mouse              = new input.Mouse(this.canvas);
-  this._scene             = undefined;
+  this.keyboard = new input.Keyboard();
+  this.mouse    = new input.Mouse(this.canvas);
+  this._scene   = undefined;
+  
+  // Arbitrary game ID
+  this._id      = currentId++;
 
   this.keyboard.start();
   
@@ -46,13 +52,24 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
   /**
    * Updates the game
    */
-  update : {
-    value : function (dt) {
+  update: {
+    value: function (dt) {
+      var debugOptions = debug.getOptions(this._id);
+      
+      if (debugOptions) {
+        debug.setCurrentId(this._id);
+        debug.clear(this._id);
+      }
+
       if (this._scene) {
         this._scene.update(dt);
         this._scene._beforeDraw(this.renderer);
         this._scene.draw(this.renderer);
         this._scene._afterDraw(this.renderer);
+        
+        if (debugOptions) {
+          this._scene.drawDebug(this.renderer, debugOptions);
+        }
       }
 
       this.keyboard.update();
@@ -62,8 +79,8 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
   /**
    * Stops the game if it is started
    */
-  stop : {
-    value : function () {
+  stop: {
+    value: function () {
       this.pixiApp.stop();
     }
   },
@@ -71,8 +88,8 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
   /**
    * Starts the game if it is stopped
    */
-  start : {
-    value : function () {
+  start: {
+    value: function () {
       this.pixiApp.start();
     }
   },
@@ -80,8 +97,8 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
   /**
    * Gets the scene to be rendered in the game
    */
-  getScene : {
-    value : function () {
+  getScene: {
+    value: function () {
       return this._scene;
     }
   },
@@ -89,8 +106,8 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
   /**
    * Sets the scene to be rendered in the game
    */
-  setScene : {
-    value : function (scene) {
+  setScene: {
+    value: function (scene) {
       if (this._scene) {
         this.stage.removeChild(this._scene._stage);
         this._scene.keyboard = undefined;
@@ -105,7 +122,22 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
     }
   },
   
-  _onResize : {
+  debug: {
+    get: function () { return debug.getOptions(this._id); },
+    set: function (value) {
+      if (value) {
+        if (typeof value === 'object') {
+          debug.start(this._id, value);
+        } else {
+          debug.start(this._id);
+        }
+      } else {
+        debug.stop(this._id);
+      }
+    }
+  },
+  
+  _onResize: {
     value: function (e) {
       if (this._scene) {
         this._scene._onResize(e);

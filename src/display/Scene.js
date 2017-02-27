@@ -20,6 +20,7 @@ var Scene = function (canvas) {
     height: canvas.height
   });
   
+  this._lastDrawnGameObjects      = [];
   this._nonPartitionedGameObjects = []; // Cleared every frame
   this._nearbyGameObjects         = [];
   this._buckets                   = [];
@@ -224,24 +225,38 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     value : function (renderer) {
       // Clear all children then add only the ones that can be seen
       this._stage.children.length = 0;
-      var all = this._findSurroundingGameObjects(this.camera, 2).sort(
+      this._lastDrawnGameObjects  = this._findSurroundingGameObjects(this.camera, 2).sort(
         (a, b) => a.layer - b.layer
       );
       
       // This seems to perform faster than using filter()
-      for (let obj of all) {
+      for (let obj of this._lastDrawnGameObjects) {
         if (this.canSee(obj)) {
-          if (debug()) {
-            obj.drawDebug(this._stage);
-          }
-          
           this._stage.addChild(obj);
         }
       }
+    }
+  },
+  
+  drawDebug : {
+    value: function (renderer, options) {
+      var debugContainer = debug.getContainer();
       
-      if (debug()) {
-        this._quadtree.draw(this._stage);
+      // This seems to perform faster than using filter()
+      for (let obj of this._lastDrawnGameObjects) {
+        if (options[debug.Flag.AABB]) {
+          obj.drawDebugAABB(debugContainer);
+        }
+        if (options[debug.Flag.VERTICES]) {
+          obj.drawDebugVertices(debugContainer);
+        }
       }
+      
+      if (options[debug.Flag.QUADTREE]) {
+        this._quadtree.drawDebugQuadtree(debugContainer);
+      }
+      
+      this._stage.addChild(debugContainer);
     }
   },
   

@@ -1,17 +1,13 @@
 "use strict";
 
-const PIXI = require('pixi.js');
-
 /**
  * Reference: http://gamedevelopment.tutsplus.com/tutorials/quick-tip-use-quadtrees-to-detect-likely-collisions-in-2d-space--gamedev-374
  */
 var Quadtree = function (level, bounds) {
-    this.level = level;
+    this.level   = level;
     this.objects = [];
-    this.bounds = bounds;
-    this.nodes = [undefined, undefined, undefined, undefined];
-  
-    this.debugContainer = new PIXI.Container();
+    this.bounds  = bounds;
+    this.nodes   = [undefined, undefined, undefined, undefined];
 };
 Object.defineProperties(Quadtree, {
     MAX_OBJECTS : {
@@ -23,28 +19,34 @@ Object.defineProperties(Quadtree, {
     }
 });
 Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
-    draw : {
-        value : function (container) {
-            this.debugContainer.removeChildren();
-            var graphics = new PIXI.Graphics();
-          
+    drawDebug: {
+      value: function (container) {}
+    },
+
+    drawDebugQuadtree: {
+        value: function (container) {
             for (var i = 0; i < this.nodes.length; i++) {
                 if (this.nodes[i] !== undefined) {
-                    this.nodes[i].draw(container);
+                    this.nodes[i].drawDebugQuadtree(container);
                 }
             }
 
-            graphics.lineStyle(1, 0xFFFFFF, 1);
-            graphics.drawRect(
+            container.lineStyle(1, 0xFFFFFF, 1);
+            container.drawRect(
               this.bounds.x,
               this.bounds.y,
               this.bounds.width,
               this.bounds.height
             );
-          
-            this.debugContainer.addChild(graphics);
-            container.addChild(this.debugContainer);
         }
+    },
+
+    drawDebugVertices: {
+      value: function (container) {}
+    },
+
+    drawDebugAABB: {
+      value: function (container) {}
     },
 
     /**

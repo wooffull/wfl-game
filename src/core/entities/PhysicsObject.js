@@ -119,25 +119,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         }
     },
 
-    draw : {
-        value : function (ctx) {
-            ctx.save();
-
-            ctx.rotate(this.transform.rotation);
-
-            if (this.graphic === undefined) {
-                ctx.beginPath();
-                ctx.fillStyle = "rgb(256, 0, 0)";
-                ctx.rect(0, 0, 25, 25);
-                ctx.fill();
-            } else {
-                GameObject.prototype.draw.call(this, ctx);
-            }
-
-            ctx.restore();
-        }
-    },
-
     checkCollision : {
         value : function (physObj) {
             var collisionData = {

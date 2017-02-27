@@ -21,9 +21,6 @@ var GameObject = function () {
   this.customData         = {};
   this.calculationCache   = {};
   
-  this.debugContainer = new PIXI.Container();
-  this.addChild(this.debugContainer);
-  
   // A reference to the previously added sprite so that it can be removed when
   // a new sprite is set with _setSprite()
   this._prevSprite        = undefined;
@@ -60,37 +57,48 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
       }
     }
   },
-
+  
   drawDebug: {
+    value: function (container) {}
+  },
+  
+  drawDebugQuadtree: {
+    value: function (container) {}
+  },
+  
+  drawDebugVertices: {
     value: function (container) {
-      this.debugContainer.removeChildren();
-      var graphics = new PIXI.Graphics();
-      
-      graphics.lineStyle(1, 0xFFBBBB, 1);
-      graphics.drawRect(
-        this.calculationCache.x - this.calculationCache.aabbWidth  * 0.5,
-        this.calculationCache.y - this.calculationCache.aabbHeight * 0.5,
-        this.calculationCache.aabbWidth,
-        this.calculationCache.aabbHeight
-      );
-      
       if (this.vertices.length > 0) {
-        graphics.lineStyle(2, 0xBBBBFF, 1);
-        graphics.moveTo(
+        container.lineStyle(2, 0xBBBBFF, 1);
+        container.moveTo(
           this.vertices[0].x + this.calculationCache.x,
           this.vertices[0].y + this.calculationCache.y
         );
         
         for (var i = 1; i < this.vertices.length; i++) {
-          graphics.lineTo(
+          container.lineTo(
             this.vertices[i].x + this.calculationCache.x,
             this.vertices[i].y + this.calculationCache.y
           );
         }
+        
+        container.lineTo(
+          this.vertices[0].x + this.calculationCache.x,
+          this.vertices[0].y + this.calculationCache.y
+        );
       }
-      
-      this.debugContainer.addChild(graphics);
-      container.addChild(this.debugContainer);
+    }
+  },
+
+  drawDebugAABB: {
+    value: function (container) {
+      container.lineStyle(1, 0xFFBBBB, 1);
+      container.drawRect(
+        this.calculationCache.x - this.calculationCache.aabbWidth  * 0.5,
+        this.calculationCache.y - this.calculationCache.aabbHeight * 0.5,
+        this.calculationCache.aabbWidth,
+        this.calculationCache.aabbHeight
+      );
     }
   },
 
