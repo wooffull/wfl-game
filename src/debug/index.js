@@ -68,42 +68,48 @@ var getOptions = function (id = currentId) {
 // as the segment's origin. Otherwise, the segment's origin
 // is (0, 0) in the world
 var drawSegment = function (v1, v2, referenceGameObject) {
-  var container = getContainer();
-  var offset    = {x: 0, y: 0};
+  var options = getOptions();
   
-  if (referenceGameObject) {
-    offset.x = referenceGameObject.x || 0;
-    offset.y = referenceGameObject.y || 0;
-  }
-  
-  if (container) {
-    container.lineStyle(1, 0xFFFFFF, 1);
-    container.moveTo(
-      v1.x + offset.x,
-      v1.y + offset.y
-    );
-    
-    container.lineTo(
-      v2.x + offset.x,
-      v2.y + offset.y
-    );
+  if (options[Flag.VECTORS]) {
+    var container = getContainer();
+    var offset    = {x: 0, y: 0};
+
+    if (referenceGameObject) {
+      offset.x = referenceGameObject.x || 0;
+      offset.y = referenceGameObject.y || 0;
+    }
+
+    if (container) {
+      container.lineStyle(1, 0xFFFFFF, 1);
+      container.moveTo(
+        v1.x + offset.x,
+        v1.y + offset.y
+      );
+
+      container.lineTo(
+        v2.x + offset.x,
+        v2.y + offset.y
+      );
+    }
   }
 };
 
 var drawPoint = function (point, radius = 3) {
-  var container = getContainer();
+  var options = getOptions();
   
-  if (container) {
-    container.lineStyle(1, 0xFFFFFF, 1);
-    container.beginFill();
-    container.arc(
-      point.x,
-      point.y,
-      radius,
-      0,
-      Math.PI * 2
-    );
-    container.endFill();
+  if (options[Flag.VECTORS]) {
+    var container = getContainer();
+    
+    if (container) {
+      container.lineStyle(0, 0xFFFFFF, 1);
+      container.beginFill(0xFFFFFF);
+      container.drawCircle(
+        point.x,
+        point.y,
+        radius
+      );
+      container.endFill();
+    }
   }
 };
 
@@ -118,5 +124,6 @@ module.exports = {
   getContainer: getContainer,
   getOptions:   getOptions,
   
-  drawSegment:  drawSegment
+  drawSegment:  drawSegment,
+  drawPoint:    drawPoint
 };

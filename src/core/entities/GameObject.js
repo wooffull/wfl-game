@@ -5,6 +5,7 @@ const geom            = require('../../geom');
 const animation       = require('./animation');
 const GameObjectState = animation.GameObjectState;
 const FrameObject     = animation.FrameObject;
+const debug           = require('../../debug');
 
 /**
  * Generic object for the game's canvas
@@ -58,16 +59,12 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
     }
   },
   
-  drawDebug: {
-    value: function (container) {}
-  },
-  
   drawDebugQuadtree: {
-    value: function (container) {}
+    value: function (container = debug.getContainer()) {}
   },
   
   drawDebugVertices: {
-    value: function (container) {
+    value: function (container = debug.getContainer()) {
       if (this.vertices.length > 0) {
         container.lineStyle(2, 0xBBBBFF, 1);
         container.moveTo(
@@ -82,16 +79,18 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
           );
         }
         
-        container.lineTo(
-          this.vertices[0].x + this.calculationCache.x,
-          this.vertices[0].y + this.calculationCache.y
-        );
+        if (this.vertices.length > 2) {
+          container.lineTo(
+            this.vertices[0].x + this.calculationCache.x,
+            this.vertices[0].y + this.calculationCache.y
+          );
+        }
       }
     }
   },
 
   drawDebugAABB: {
-    value: function (container) {
+    value: function (container = debug.getContainer()) {
       container.lineStyle(1, 0xFFBBBB, 1);
       container.drawRect(
         this.calculationCache.x - this.calculationCache.aabbWidth  * 0.5,

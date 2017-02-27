@@ -19,12 +19,8 @@ Object.defineProperties(Quadtree, {
     }
 });
 Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
-    drawDebug: {
-      value: function (container) {}
-    },
-
     drawDebugQuadtree: {
-        value: function (container) {
+        value: function (container = debug.getContainer()) {
             for (var i = 0; i < this.nodes.length; i++) {
                 if (this.nodes[i] !== undefined) {
                     this.nodes[i].drawDebugQuadtree(container);
@@ -42,11 +38,11 @@ Quadtree.prototype = Object.freeze(Object.create(Quadtree.prototype, {
     },
 
     drawDebugVertices: {
-      value: function (container) {}
+      value: function (container = debug.getContainer()) {}
     },
 
     drawDebugAABB: {
-      value: function (container) {}
+      value: function (container = debug.getContainer()) {}
     },
 
     /**
