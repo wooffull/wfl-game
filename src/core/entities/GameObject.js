@@ -15,7 +15,8 @@ var GameObject = function () {
   
   // Optimization: Use transform.position to avoid the getter for position
   this.transform.position = new geom.Vec2(this.position.x, this.position.y);
-  this.vertices           = undefined;
+  
+  this.vertices           = [];
   this.states             = {};
   this.currentState       = undefined;
   this.layer              = undefined;

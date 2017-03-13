@@ -193,6 +193,8 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    */
   update : {
     value : function (dt) {
+      this._handleCollisions(this._nearbyGameObjects);
+      
       this._updateBuckets();
       this.camera.update(dt);
       
@@ -213,8 +215,6 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       for (var i = 0; i < nearbyObjectLength; i++) {
         this._nearbyGameObjects[i].cacheCalculations();
       }
-
-      this._handleCollisions(this._nearbyGameObjects);
     }
   },
 
@@ -497,17 +497,12 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       }
       
       // Only directly check collisions for objects that aren't fixed
-      var nonFixedObjects = gameObjects.filter((obj) => !obj.fixed);
+      var nonFixedObjects      = gameObjects.filter((obj) => !obj.fixed);
       var nonFixedObjectLength = nonFixedObjects.length;
 
+      // Check collisions
       for (var i = 0; i < nonFixedObjectLength; i++) {
         var obj0 = nonFixedObjects[i];
-
-        // Skip over certain objects for collision detection because
-        // other objects will check against them later
-        if (!obj0) {
-          continue;
-        }
 
         var possibleCollisions = [];
         this._quadtree.retrieve(possibleCollisions, obj0);
@@ -523,15 +518,16 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
             if ((obj0.solid || obj1.solid) && (!obj0.fixed || !obj1.fixed)) {
               if (obj0.customData.collisionList.indexOf(obj1.customData.collisionId) === -1) {
                 var collisionData = obj0.checkCollision(obj1);
-
+                
                 if (collisionData.colliding) {
                   obj0.resolveCollision(obj1, collisionData);
+                  
+                  if (!obj1.fixed) {
+                    collisionData.overlap *= -1;
+                    obj1.resolveCollision(obj0, collisionData);
+                  }
+                  
                   obj0.customData.collisionList.push(obj1.customData.collisionId);
-
-                  // Switch direction of collision for other object
-                  collisionData.direction.multiply(-1);
-
-                  obj1.resolveCollision(obj0, collisionData);
                   obj1.customData.collisionList.push(obj0.customData.collisionId);
                 }
               }

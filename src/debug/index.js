@@ -20,8 +20,14 @@ var debugOptions    = {};
 var debugContainers = {};
 var currentId       = -1;
 
-var start = function (id, options = DEFAULT_DEBUG_OPTIONS) {
+var start = function (id, options = {}) {
   if (!contains(id)) {
+    options = Object.assign(
+      {},
+      DEFAULT_DEBUG_OPTIONS,
+      options
+    );
+    
     debugOptions[id]    = options;
     debugContainers[id] = new PIXI.Graphics();
   }
@@ -67,7 +73,7 @@ var getOptions = function (id = currentId) {
 // If referenceGameObject is defined, its position is treated
 // as the segment's origin. Otherwise, the segment's origin
 // is (0, 0) in the world
-var drawSegment = function (v1, v2, referenceGameObject) {
+var drawSegment = function (v1, v2, referenceGameObject, color = 0xFFFFFF) {
   var options = getOptions();
   
   if (options[Flag.VECTORS]) {
@@ -80,7 +86,7 @@ var drawSegment = function (v1, v2, referenceGameObject) {
     }
 
     if (container) {
-      container.lineStyle(1, 0xFFFFFF, 1);
+      container.lineStyle(1, color, 1);
       container.moveTo(
         v1.x + offset.x,
         v1.y + offset.y
@@ -94,15 +100,15 @@ var drawSegment = function (v1, v2, referenceGameObject) {
   }
 };
 
-var drawPoint = function (point, radius = 3) {
+var drawPoint = function (point, radius = 3, color = 0xFFFFFF) {
   var options = getOptions();
   
   if (options[Flag.VECTORS]) {
     var container = getContainer();
     
     if (container) {
-      container.lineStyle(0, 0xFFFFFF, 1);
-      container.beginFill(0xFFFFFF);
+      container.lineStyle(0, color, 1);
+      container.beginFill(color);
       container.drawCircle(
         point.x,
         point.y,
