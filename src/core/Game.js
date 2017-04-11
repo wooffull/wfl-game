@@ -62,6 +62,11 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
       }
 
       if (this._scene) {
+        // Switch to the next scene if there's one to switch to
+        if (this._scene.nextScene) {
+          this.setScene(this._scene.nextScene);
+        }
+        
         this._scene.update(dt);
         this._scene._beforeDraw(this.renderer);
         this._scene.draw(this.renderer);
@@ -111,6 +116,7 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
       if (this._scene) {
         this.stage.removeChild(this._scene._stage);
         this._scene.keyboard = undefined;
+        this._scene.nextScene = undefined;
         this._scene.destroy();
       }
 

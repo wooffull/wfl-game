@@ -33,11 +33,13 @@ var Scene = function (canvas) {
     forceCalc: false
   };
 
-  this.canvas   = canvas;
-  this.camera   = new cameras.Camera();
-  this.bg       = new backgrounds.StaticBackground();
-  this.keyboard = undefined;
-  this.player   = undefined;
+  this.canvas              = canvas;
+  this.camera              = new cameras.Camera();
+  this.bg                  = new backgrounds.StaticBackground();
+  this.keyboard            = undefined;
+  this.player              = undefined;
+  this.nextScene           = undefined;
+  this.collisionIterations = Scene.DEFAULT_MAX_COLLISION_ITERATIONS;
 
   this.reset();
 };
@@ -45,6 +47,10 @@ var Scene = function (canvas) {
 Object.defineProperties(Scene, {
   BUCKET_PADDING_RATIO : {
     value : 0.5
+  },
+  
+  DEFAULT_MAX_COLLISION_ITERATIONS : {
+    value : 2
   }
 }),
 
@@ -62,6 +68,15 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
   reset : {
     value : function () {
       this._gameObjectLayers = { 0 : [] };
+    }
+  },
+  
+  /**
+   * Prepares the game's scene to change to another scene next frame
+   */
+  change : {
+    value : function (nextScene) {
+      this.nextScene = nextScene;
     }
   },
 
@@ -509,144 +524,152 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var nonFixedObjects      = gameObjects.filter((obj) => !obj.fixed);
       var nonFixedObjectLength = nonFixedObjects.length;
 
-      // Check collisions
-      for (var i = 0; i < nonFixedObjectLength; i++) {
-        var obj0 = nonFixedObjects[i];
+      for (var k = 0; k < this.collisionIterations; k++) {
+        // Check collisions
+        for (var i = 0; i < nonFixedObjectLength; i++) {
+          var obj0 = nonFixedObjects[i];
 
-        var possibleCollisions = [];
-        this._quadtree.retrieve(possibleCollisions, obj0);
-        var possibleCollisionLength = possibleCollisions.length;
-        
-        // Sort the objects so that the nearest ones are handled first
-        possibleCollisions.sort((a, b) => {
-          var aDistSquared = geom.Vec2.subtract(
-            obj0.position,
-            a.position
-          ).getMagnitudeSquared();
-          
-          var bDistSquared = geom.Vec2.subtract(
-            obj0.position,
-            b.position
-          ).getMagnitudeSquared();
-          
-          return aDistSquared - bDistSquared;
-        });
+          var possibleCollisions = [];
+          this._quadtree.retrieve(possibleCollisions, obj0);
+          var possibleCollisionLength = possibleCollisions.length;
 
-        for (var j = 0; j < possibleCollisionLength; j++) {
-          var obj1 = possibleCollisions[j];
+          // Sort the objects so that the nearest ones are handled first
+          possibleCollisions.sort((a, b) => {
+            var aDistSquared = geom.Vec2.subtract(
+              obj0.position,
+              a.position
+            ).getMagnitudeSquared();
 
-          if (obj1 && obj0 !== obj1) {
-            // (Optimization) Determine if a collision check is necessary.
-            // - If both objects aren't solid, they cannot collide.
-            // - If both objects are fixed, they can never collide.
-            if ((obj0.solid || obj1.solid) && (!obj0.fixed || !obj1.fixed)) {
-              if (obj0.customData.collisionList.indexOf(obj1.wflId) === -1) {
-                // Add each object to each other's list so this check doesn't
-                // happen again
-                obj0.customData.collisionList.push(obj1.wflId);
-                obj1.customData.collisionList.push(obj0.wflId);
-                
-                // Check for custom collision filters before proceeding
-                if (!obj0.canCollide(obj1) || !obj1.canCollide(obj0)) {
-                  continue;
-                }
-                
-                var collisionData = obj0.checkCollision(obj1);
-                
-                if (collisionData.colliding) {
-                  // TODO: Handle not having a contact point (like when one
-                  // object is inside another)
-                  if (!collisionData.contactPoint) {
+            var bDistSquared = geom.Vec2.subtract(
+              obj0.position,
+              b.position
+            ).getMagnitudeSquared();
+
+            return aDistSquared - bDistSquared;
+          });
+
+          for (var j = 0; j < possibleCollisionLength; j++) {
+            var obj1 = possibleCollisions[j];
+
+            if (obj1 && obj0 !== obj1) {
+              // (Optimization) Determine if a collision check is necessary.
+              // - If both objects aren't solid, they cannot collide.
+              // - If both objects are fixed, they can never collide.
+              if ((obj0.solid || obj1.solid) && (!obj0.fixed || !obj1.fixed)) {
+                if (obj0.customData.collisionList.indexOf(obj1.wflId) === -1) {
+                  // Add each object to each other's list so this check doesn't
+                  // happen again
+                  obj0.customData.collisionList.push(obj1.wflId);
+                  obj1.customData.collisionList.push(obj0.wflId);
+
+                  // Check for custom collision filters before proceeding
+                  if (!obj0.canCollide(obj1) || !obj1.canCollide(obj0)) {
                     continue;
                   }
-                  
-                  // If objects are colliding, determine how much each should
-                  // move (based on mass -- the heavier object will move less)
-                  var totalDepth    = collisionData.contactPoint.depth;
-                  var direction     = collisionData.direction;
-                  var m0            = obj0.mass;
-                  var m1            = obj1.mass;
-                  var depth0        = 0;
-                  var depth1        = 0;
-                  var displacement0 = {x: 0, y: 0};
-                  var displacement1 = {x: 0, y: 0};
-                  
-                  // Fixed objects are treated as having an infinite mass
-                  if (obj0.fixed) m0 = Infinity;
-                  if (obj1.fixed) m1 = Infinity;
-                  
-                  // Non-fixed objects can be pushed out to resolve
-                  // collisions; fixed objects cannot
-                  if (!obj0.fixed) {
-                    depth0 = totalDepth * (1 - m0 / (m0 + m1));
-                  }
-                  if (!obj1.fixed) {
-                    depth1 = totalDepth * (1 - m1 / (m0 + m1));
-                  }
-                  
-                  // Limit each object's movement up to its depth's value. This
-                  // will prevent upcoming collision resolutions that produce
-                  // similar values from doubling up on depth values
-                  if (depth0 !== 0) {
-                    var curSum          = obj0.collisionDisplacementSum;
-                    var sumDotDirection =
-                        curSum.x * direction.x +
-                        curSum.y * direction.y;
-                    sumDotDirection *= -1;
-                    
-                    if (sumDotDirection < depth0) {
-                      var depthLimitRatio = 1 - sumDotDirection / depth0;
-                      displacement0.x = direction.x * -depth0;
-                      displacement0.y = direction.y * -depth0;
-                      
-                      // Move in the direction as much as possible
-                      obj0.collisionDisplacementSum.x += 
-                        displacement0.x * depthLimitRatio;
-                      obj0.collisionDisplacementSum.y += 
-                        displacement0.y * depthLimitRatio;
-                      
-                      if (!collisionObjectCache[obj0.wflId]) {
-                        collisionObjectCache.push(obj0.wflId);
-                        collisionObjects.push(obj0);
+
+                  var collisionData = obj0.checkCollision(obj1);
+
+                  if (collisionData.colliding) {
+                    // TODO: Handle not having a contact point (like when one
+                    // object is inside another)
+                    if (!collisionData.contactPoint) {
+                      continue;
+                    }
+
+                    // If objects are colliding, determine how much each should
+                    // move (based on mass: the heavier object will move less)
+                    var totalDepth    = collisionData.contactPoint.depth;
+                    var direction     = collisionData.direction;
+                    var m0            = obj0.mass;
+                    var m1            = obj1.mass;
+                    var depth0        = 0;
+                    var depth1        = 0;
+                    var displacement0 = {x: 0, y: 0};
+                    var displacement1 = {x: 0, y: 0};
+
+                    // Fixed objects are treated as having an infinite mass
+                    if (obj0.fixed) m0 = Infinity;
+                    if (obj1.fixed) m1 = Infinity;
+
+                    // Non-fixed objects can be pushed out to resolve
+                    // collisions; fixed objects cannot
+                    if (!obj0.fixed) {
+                      depth0 = totalDepth * (1 - m0 / (m0 + m1));
+                    }
+                    if (!obj1.fixed) {
+                      depth1 = totalDepth * (1 - m1 / (m0 + m1));
+                    }
+
+                    // Limit each object's movement up to its depth's value.
+                    // This will prevent upcoming collision resolutions that
+                    // produce similar values from doubling up on depth values
+                    if (depth0 !== 0) {
+                      var curSum          = obj0.collisionDisplacementSum;
+                      var sumDotDirection =
+                          curSum.x * direction.x +
+                          curSum.y * direction.y;
+                      sumDotDirection *= -1;
+
+                      if (sumDotDirection < depth0) {
+                        var depthLimitRatio = 1 - sumDotDirection / depth0;
+                        displacement0.x = direction.x * -depth0;
+                        displacement0.y = direction.y * -depth0;
+
+                        // Move in the direction as much as possible
+                        obj0.collisionDisplacementSum.x += 
+                          displacement0.x * depthLimitRatio;
+                        obj0.collisionDisplacementSum.y += 
+                          displacement0.y * depthLimitRatio;
+
+                        if (!collisionObjectCache[obj0.wflId]) {
+                          collisionObjectCache.push(obj0.wflId);
+                          collisionObjects.push(obj0);
+                        }
                       }
                     }
-                  }
-                  
-                  // Flip direction before limiting obj1's depth movement too
-                  direction.x *= -1;
-                  direction.y *= -1;
-                  
-                  if (depth1 !== 0) {
-                    var curSum          = obj1.collisionDisplacementSum;
-                    var sumDotDirection =
-                        curSum.x * direction.x +
-                        curSum.y * direction.y;
-                    sumDotDirection *= -1;
-                    
-                    if (sumDotDirection < depth1) {
-                      var depthLimitRatio = 1 - sumDotDirection / depth1;
-                      displacement1.x = direction.x * -depth1;
-                      displacement1.y = direction.y * -depth1;
-                      
-                      // Move in the direction as much as possible
-                      obj1.collisionDisplacementSum.x += 
-                        displacement1.x * depthLimitRatio;
-                      obj1.collisionDisplacementSum.y += 
-                        displacement1.y * depthLimitRatio;
-                      
-                      if (!collisionObjectCache[obj1.wflId]) {
-                        collisionObjectCache.push(obj1.wflId);
-                        collisionObjects.push(obj1);
+
+                    // Flip direction before limiting obj1's depth movement too
+                    direction.x *= -1;
+                    direction.y *= -1;
+
+                    if (depth1 !== 0) {
+                      var curSum          = obj1.collisionDisplacementSum;
+                      var sumDotDirection =
+                          curSum.x * direction.x +
+                          curSum.y * direction.y;
+                      sumDotDirection *= -1;
+
+                      if (sumDotDirection < depth1) {
+                        var depthLimitRatio = 1 - sumDotDirection / depth1;
+                        displacement1.x = direction.x * -depth1;
+                        displacement1.y = direction.y * -depth1;
+
+                        // Move in the direction as much as possible
+                        obj1.collisionDisplacementSum.x += 
+                          displacement1.x * depthLimitRatio;
+                        obj1.collisionDisplacementSum.y += 
+                          displacement1.y * depthLimitRatio;
+
+                        if (!collisionObjectCache[obj1.wflId]) {
+                          collisionObjectCache.push(obj1.wflId);
+                          collisionObjects.push(obj1);
+                        }
                       }
                     }
+
+                    obj0.onCollide(obj1);
+                    obj1.onCollide(obj0);
                   }
-                  
-                  obj0.onCollide(obj1);
-                  obj1.onCollide(obj0);
                 }
               }
             }
           }
+        }
+        
+        // Only do more collision iterations if something has collided this
+        // frame
+        if (collisionObjects.length === 0) {
+          break;
         }
       }
       

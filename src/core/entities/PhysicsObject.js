@@ -22,7 +22,7 @@ var PhysicsObject = function () {
   this.forward         = new geom.Vec2(1, 0);
   this.mass            = 1.0;
   this.friction        = 0.8; // This object's surface's friction
-  this.restitution     = 0.8; // This object's surface's bounciness
+  this.restitution     = 0.0; // This object's surface's bounciness
   this.solid           = true;
   this.fixed           = false;
   
@@ -181,9 +181,9 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
       
       // Only axes that are opposite direction of the velocity should be
       // considered
-      axes = axes.filter((axis) =>
+      /*axes = axes.filter((axis) =>
         velocityDirection._x * axis.x + velocityDirection._y * axis.y <= 0
-      );
+      );*/
       
       for (var i = 0; i < axes.length; i++) {
         var axis        = axes[i];
@@ -252,13 +252,15 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         // to its future position and see if it collides along the way
         var cache             = this.calculationCache;
         var otherCache        = physObj.calculationCache;
-        var velocityMag       = this.velocity.getMagnitude();
+        var curVelocity       = 
+            this.velocity.clone().add(this.collisionImpulseSum);
+        var velocityMag       = curVelocity.getMagnitude();
         var sampleCount       = 1;
         var velocityIncrement = new geom.Vec2();
         
         if (velocityMag !== 0) {
-          var velocityDirection   = this.velocity.clone().normalize();
-          var smallestSide        = Math.min(cache.width, cache.height);
+          var velocityDirection   = curVelocity.clone().normalize();
+          var smallestSide        = Math.min(cache.width * 0.5, cache.height * 0.5);
           var possibleSampleCount = Math.ceil(velocityMag / smallestSide);
           var sampleCount         = 1 + Math.min(
             possibleSampleCount,
@@ -270,8 +272,8 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
           
           // Move this object back to where it was last frame and slowly move
           // it to its current position until a collision is found (if any)
-          this.transform.position._x -= this.velocity._x;
-          this.transform.position._y -= this.velocity._y;
+          this.transform.position._x -= curVelocity._x;
+          this.transform.position._y -= curVelocity._y;
           cache.x = this.transform.position._x;
           cache.y = this.transform.position._y;
         }
@@ -304,7 +306,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
               var parallelComponent =
                   geom.Vec2.dot(edge, this.acceleration) * (1 - friction);
               var normalComponent =
-                  Math.abs(geom.Vec2.dot(edgeNormal, this.velocity))
+                  Math.abs(geom.Vec2.dot(edgeNormal, curVelocity))
                   * restitution;
               
               edge.multiply(parallelComponent);
@@ -607,10 +609,10 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
       //this.calculationCache.ax += this.collisionImpulseSum._x;
       //this.calculationCache.ay += this.collisionImpulseSum._y;
       
-      this.velocity._x += this.collisionImpulseSum._x;
-      this.velocity._y += this.collisionImpulseSum._y;
-      this.calculationCache.vx += this.collisionImpulseSum._x;
-      this.calculationCache.vy += this.collisionImpulseSum._y;
+      //this.velocity._x += this.collisionImpulseSum._x;
+      //this.velocity._y += this.collisionImpulseSum._y;
+      //this.calculationCache.vx += this.collisionImpulseSum._x;
+      //this.calculationCache.vy += this.collisionImpulseSum._y;
       
       // Project velocity onto the impulse sum
       /*var impulseSumDirection  = this.collisionImpulseSum.clone().normalize();
@@ -624,17 +626,38 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
       this.calculationCache.vx = vx;
       this.calculationCache.vy = vy;*/
       
+      // Project the acceleration on the direction of the collision impulse
+      // Experimental functionality: Is this needed?
+      var impulseSumDirection  = this.collisionImpulseSum.clone().normalize();
+      var accelerationDotDirection = geom.Vec2.dot(
+        this.acceleration, impulseSumDirection
+      );
+      var ax = impulseSumDirection._x * accelerationDotDirection;
+      var ay = impulseSumDirection._y * accelerationDotDirection;
+      this.acceleration._x = ax;
+      this.acceleration._y = ay;
+      this.calculationCache.ax = ax;
+      this.calculationCache.ay = ay;
+      
       // Snap to the next integer so that objects can move smoothly after
       // colliding
       if (dx < 0) dx = Math.floor(dx);
       else        dx = Math.ceil(dx);
       if (dy < 0) dy = Math.floor(dy);
       else        dy = Math.ceil(dy);
+      //if (dx < 0) dx = dx - 0.02;
+      //else        dx = dx + 0.02;
+      //if (dy < 0) dy = dy - 0.02;
+      //else        dy = dy + 0.02;
       
       this.transform.position._x += dx;
       this.transform.position._y += dy;
       this.calculationCache.x += dx;
       this.calculationCache.y += dy;
+      
+      this.acceleration.multiply(0);
+      
+      if (this.velocity.getMagnitude() < 0.001) this.velocity.multiply(0);
     }
   },
   
