@@ -62,12 +62,32 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
       }
 
       if (this._scene) {
-        // Switch to the next scene if there's one to switch to
-        if (this._scene.nextScene) {
-          this.setScene(this._scene.nextScene);
+        // Increment the time step at a controlled rate if too much time has
+        // passed between the previous frame and this frame
+        while (dt > 0) {
+          if (this._scene) {
+            // Switch to the next scene if there's one to switch to
+            if (this._scene.nextScene) {
+              this.setScene(this._scene.nextScene);
+            }
+          }
+          
+          if (dt > 1) {
+            var halfDt = dt * 0.5;
+            
+            if (halfDt < 1) {
+              this._scene.update(halfDt);
+              dt -= halfDt;
+            } else {
+              this._scene.update(1);
+              dt--;
+            }
+          } else {
+            this._scene.update(dt);
+            dt = 0;
+          }
         }
         
-        this._scene.update(dt);
         this._scene._beforeDraw(this.renderer);
         this._scene.draw(this.renderer);
         this._scene._afterDraw(this.renderer);

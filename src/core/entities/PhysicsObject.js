@@ -21,7 +21,7 @@ var PhysicsObject = function () {
   this.maxAcceleration = PhysicsObject.DEFAULT_MAX_ACCELERATION;
   this.forward         = new geom.Vec2(1, 0);
   this.mass            = 1.0;
-  this.friction        = 0.8; // This object's surface's friction
+  this.friction        = 0.0; // This object's surface's friction
   this.restitution     = 0.0; // This object's surface's bounciness
   this.solid           = true;
   this.fixed           = false;
@@ -30,10 +30,11 @@ var PhysicsObject = function () {
   // will not rotate with the forward
   this.allowVertexRotation = true;
   
-  // A 2D vector that describes how much this PhysicsObject has to move this
+  // 2D vectors that describes how much this PhysicsObject has to move this
   // frame to resolve its collisions
-  this.collisionDisplacementSum = new geom.Vec2();
-  this.collisionImpulseSum      = new geom.Vec2();
+  this.collisionDisplacementSum   = new geom.Vec2();
+  this.collisionSurfaceImpulseSum = new geom.Vec2();
+  this.collisionMomentumSum       = new geom.Vec2();
   
   // Calculated axes for (narrow phase) collision's Separating Axis Test.
   // Set to null when:
@@ -67,6 +68,23 @@ Object.defineProperties(PhysicsObject, {
   // upper limit for the number of those samples.
   MAX_COLLISION_MULTI_SAMPLE_COUNT : {
     value: 5
+  },
+  
+  // PhysicsObjects can only adjust their position's x or y if they have moved
+  // more than this amount in that direction over the past 2 frames
+  MIN_DISPLACEMENT_TO_MOVE: {
+    value: 1
+  },
+  
+  // Eases position correction from collisions to reduce jitters
+  COLLISION_DISPLACEMENT_PERCENTAGE_CORRECTION: {
+    value: 0.5
+  },
+  
+  // The minimum displacement needed to move. If it's less than the slop, the
+  // displacement is treated as 0
+  COLLISION_DISPLACEMENT_SLOP: {
+    value: 0.1
   }
 });
 
@@ -253,7 +271,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         var cache             = this.calculationCache;
         var otherCache        = physObj.calculationCache;
         var curVelocity       = 
-            this.velocity.clone().add(this.collisionImpulseSum);
+            this.velocity.clone().add(this.collisionSurfaceImpulseSum);
         var velocityMag       = curVelocity.getMagnitude();
         var sampleCount       = 1;
         var velocityIncrement = new geom.Vec2();
@@ -298,30 +316,23 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             }
 
             if (bestContactPoint) {
-              var restitution = this.restitution * physObj.restitution;
-              var friction    = (this.friction + physObj.friction) * 0.5;
-              var edge        = collisionData.edgeDirection.clone();
-              var edgeNormal  = edge.getOrthogonal();
-              
+              var restitution       = this.restitution * physObj.restitution;
+              var friction          = (this.friction + physObj.friction) * 0.5;
+              var edge              = collisionData.edgeDirection.clone();
               var parallelComponent =
                   geom.Vec2.dot(edge, this.acceleration) * (1 - friction);
-              var normalComponent =
-                  Math.abs(geom.Vec2.dot(edgeNormal, curVelocity))
-                  * restitution;
-              
-              edge.multiply(parallelComponent);
-              edgeNormal.multiply(normalComponent);
-              
-              var impulse = edge.add(edgeNormal);
+              var impulse           = edge.multiply(parallelComponent);
               
               if (physObj.fixed) {
-                this.collisionImpulseSum._x += impulse._x;
-                this.collisionImpulseSum._y += impulse._y;
+                this.collisionSurfaceImpulseSum._x += impulse._x;
+                this.collisionSurfaceImpulseSum._y += impulse._y;
               } else {
-                this.collisionImpulseSum._x += impulse._x / this.mass;
-                this.collisionImpulseSum._y += impulse._y / this.mass;
-                physObj.collisionImpulseSum._x -= impulse._x / physObj.mass;
-                physObj.collisionImpulseSum._y -= impulse._y / physObj.mass;
+                this.collisionSurfaceImpulseSum._x += impulse._x / this.mass;
+                this.collisionSurfaceImpulseSum._y += impulse._y / this.mass;
+                physObj.collisionSurfaceImpulseSum._x -=
+                  impulse._x / physObj.mass;
+                physObj.collisionSurfaceImpulseSum._y -=
+                  impulse._y / physObj.mass;
               }
               
               collisionData.contactPoint = bestContactPoint;
@@ -601,34 +612,10 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
    */
   resolveCollisions: {
     value: function () {
-      var dx = this.collisionDisplacementSum._x;
-      var dy = this.collisionDisplacementSum._y;
-      
-      //this.acceleration._x += this.collisionImpulseSum._x;
-      //this.acceleration._y += this.collisionImpulseSum._y;
-      //this.calculationCache.ax += this.collisionImpulseSum._x;
-      //this.calculationCache.ay += this.collisionImpulseSum._y;
-      
-      //this.velocity._x += this.collisionImpulseSum._x;
-      //this.velocity._y += this.collisionImpulseSum._y;
-      //this.calculationCache.vx += this.collisionImpulseSum._x;
-      //this.calculationCache.vy += this.collisionImpulseSum._y;
-      
-      // Project velocity onto the impulse sum
-      /*var impulseSumDirection  = this.collisionImpulseSum.clone().normalize();
-      var velocityDotDirection = geom.Vec2.dot(
-        this.velocity, impulseSumDirection
-      );
-      var vx = impulseSumDirection._x * velocityDotDirection;
-      var vy = impulseSumDirection._y * velocityDotDirection;
-      this.velocity._x = vx;
-      this.velocity._y = vy;
-      this.calculationCache.vx = vx;
-      this.calculationCache.vy = vy;*/
-      
       // Project the acceleration on the direction of the collision impulse
       // Experimental functionality: Is this needed?
-      var impulseSumDirection  = this.collisionImpulseSum.clone().normalize();
+      var impulseSumDirection  = 
+        this.collisionSurfaceImpulseSum.clone().normalize();
       var accelerationDotDirection = geom.Vec2.dot(
         this.acceleration, impulseSumDirection
       );
@@ -639,23 +626,44 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
       this.calculationCache.ax = ax;
       this.calculationCache.ay = ay;
       
+      // Calculate new velocity based on momentum calculations and surface
+      // physics (friction & restitution)
+      // Note: Adjusted acceleration (above) is added for fun(???)
+      var newVelocityDotDirection = geom.Vec2.dot(
+        this.collisionMomentumSum, impulseSumDirection
+      );
+      var vx = impulseSumDirection._x * newVelocityDotDirection;
+      var vy = impulseSumDirection._y * newVelocityDotDirection;
+      this.velocity._x =
+        this.collisionMomentumSum._x + this.collisionSurfaceImpulseSum._x + ax;
+      this.velocity._y = 
+        this.collisionMomentumSum._y + this.collisionSurfaceImpulseSum._y + ay;
+      this.calculationCache.vx = 
+        this.collisionMomentumSum._x + this.collisionSurfaceImpulseSum._x + ax;
+      this.calculationCache.vy = 
+        this.collisionMomentumSum._y + this.collisionSurfaceImpulseSum._y + ay;
+      
       // Snap to the next integer so that objects can move smoothly after
       // colliding
+      var dx = this.collisionDisplacementSum._x;
+      var dy = this.collisionDisplacementSum._y;
+      
       if (dx < 0) dx = Math.floor(dx);
       else        dx = Math.ceil(dx);
       if (dy < 0) dy = Math.floor(dy);
       else        dy = Math.ceil(dy);
-      //if (dx < 0) dx = dx - 0.02;
-      //else        dx = dx + 0.02;
-      //if (dy < 0) dy = dy - 0.02;
-      //else        dy = dy + 0.02;
       
+      dx *= PhysicsObject.COLLISION_DISPLACEMENT_PERCENTAGE_CORRECTION;
+      dy *= PhysicsObject.COLLISION_DISPLACEMENT_PERCENTAGE_CORRECTION;
+      
+      if (Math.abs(dx) < PhysicsObject.COLLISION_DISPLACEMENT_SLOP) dx = 0;
+      if (Math.abs(dy) < PhysicsObject.COLLISION_DISPLACEMENT_SLOP) dy = 0;
+
       this.transform.position._x += dx;
-      this.transform.position._y += dy;
       this.calculationCache.x += dx;
+
+      this.transform.position._y += dy;
       this.calculationCache.y += dy;
-      
-      this.acceleration.multiply(0);
       
       if (this.velocity.getMagnitude() < 0.001) this.velocity.multiply(0);
     }
