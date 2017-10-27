@@ -17,12 +17,12 @@ var PhysicsObject = function () {
   this.acceleration       = new geom.Vec2();
   this.maxSpeed           = PhysicsObject.DEFAULT_MAX_SPEED;
   this.maxAcceleration    = PhysicsObject.DEFAULT_MAX_ACCELERATION;
-  this.mass               = 1.0;
-  this.friction           = 0.0; // This object's surface's friction
-  this.restitution        = 0.0; // This object's surface's bounciness
+  this.mass               = PhysicsObject.DEFAULT_MASS;
+  this.friction           = PhysicsObject.DEFAULT_SURFACE_FRICTION;
+  this.restitution        = PhysicsObject.DEFAULT_SURFACE_RESTITUTION;
   this.solid              = true;
   this.fixed              = false;
-  this.allowOverlapEvents = false;
+  this.allowOverlapEvents = true;
   
   // 2D vectors that describes how much this PhysicsObject has to move this
   // frame to resolve its collisions
@@ -46,6 +46,16 @@ Object.defineProperties(PhysicsObject, {
   },
   DEFAULT_MAX_SPEED: {
     value: 0.4
+  },
+  
+  DEFAULT_MASS: {
+    value: 1.0
+  },
+  DEFAULT_SURFACE_FRICTION: {
+    value: 0.0
+  },
+  DEFAULT_SURFACE_RESTITUTION: {
+    value: 0.0
   },
 
   // The amount of angles at which the physics object can be rendered
@@ -73,17 +83,6 @@ Object.defineProperties(PhysicsObject, {
   // upper limit for the number of those samples.
   MAX_COLLISION_MULTI_SAMPLE_COUNT : {
     value: 6
-  },
-  
-  // PhysicsObjects can only adjust their position's x or y if they have moved
-  // more than this amount in that direction over the past 2 frames
-  MIN_DISPLACEMENT_TO_MOVE: {
-    value: 1
-  },
-  
-  // Eases position correction from collisions to reduce jitters
-  COLLISION_DISPLACEMENT_PERCENTAGE_CORRECTION: {
-    value: 0.5
   },
   
   // The minimum displacement needed to move. If it's less than the slop, the
@@ -176,6 +175,9 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
         this._previousPosition._y = this.transform.position._y;
         this.transform.position._x += this.velocity._x * dt;
         this.transform.position._y += this.velocity._y * dt;
+      } else {
+        this._previousPosition._x = this.transform.position._x;
+        this._previousPosition._y = this.transform.position._y;
       }
       
       // Optimization: Includes GameObject's update() via copypaste to prevent
@@ -186,28 +188,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
       }
       
       this.transform.rotation = Math.atan2(this.forward._y, this.forward._x);
-    }
-  },
-  
-  checkBroadPhaseCollision: {
-    value: function (physObj) {
-      var cache      = this.calculationCache;
-      var otherCache = physObj.calculationCache;
-
-      // Specifically, check if the two object's AABBs are overlapping
-      var thisHalfW = cache.aabbHalfWidth;
-      var thisHalfH = cache.aabbHalfHeight;
-      var thisX     = cache.x;
-      var thisY     = cache.y;
-      var thatHalfW = otherCache.aabbHalfWidth;
-      var thatHalfH = otherCache.aabbHalfHeight;
-      var thatX     = otherCache.x;
-      var thatY     = otherCache.y;
-      
-      return thisX - thisHalfW <= thatX + thatHalfW &&
-             thisX + thisHalfW >= thatX - thatHalfW &&
-             thisY - thisHalfH <= thatY + thatHalfH &&
-             thisY + thisHalfH >= thatY - thatHalfH;
     }
   },
   
@@ -533,7 +513,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
               // no edge direction), then there's no edge to "slide" against.
               if (collisionData.edgeDirection) {
                 var restitution       = this.restitution * physObj.restitution;
-                var friction          = (this.friction + physObj.friction) * 0.5;
+                var friction          = this.friction * physObj.friction;
                 var edge              = {
                   x: collisionData.edgeDirection.x,
                   y: collisionData.edgeDirection.y
@@ -544,6 +524,43 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
                 // Multiply edge by parallel component to calculate impulse
                 edge.x *= parallelComponent;
                 edge.y *= parallelComponent;
+                
+                let edgeDirection = {
+                  x: collisionData.edgeDirection.x,
+                  y: collisionData.edgeDirection.y
+                };
+                let edgeRight = {
+                  x: -edgeDirection.y,
+                  y: edgeDirection.x
+                };
+                let velocityRight = {
+                  x: -cache.vy,
+                  y: cache.vx
+                };
+                let edgeRightDotVelocityRight =
+                    edgeRight.x * velocityRight.x +
+                    edgeRight.y * velocityRight.y;
+                
+                // If the rights are in different direction, flip the edge
+                // direction so calculations won't be negative
+                if (edgeRightDotVelocityRight < 0) {
+                  edgeDirection.x *= -1;
+                  edgeDirection.y *= -1;
+                }
+                
+                let remainingSamples = (sampleCount - 1) - i;
+                let remainingVx = velocityIncrement.x * remainingSamples;
+                let remainingVy = velocityIncrement.y * remainingSamples;
+                let edgeDotVelocity =
+                    edgeDirection.x * remainingVx +
+                    edgeDirection.y * remainingVy;
+                
+                // Finish incrementing the physics object's position along the
+                // edge's direction
+                this.collisionDisplacementSum._x +=
+                  edgeDotVelocity * edgeDirection.x;
+                this.collisionDisplacementSum._y +=
+                  edgeDotVelocity * edgeDirection.y;
 
                 if (physObj.fixed) {
                   this.collisionSurfaceImpulseSum._x += edge.x;
@@ -654,18 +671,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
             bestEdge.v1,
             bestEdge.v0
           ).normalize();
-
-          // Flip the edge direction if it's opposite from the velocity. This is to ensure winding order is correct
-          if (geom.Vec2.dot(collisionData.edgeDirection, velocityDirection) < 0) {
-            collisionData.edgeDirection.multiply(-1);
-          
-          // Otherwise flip it orthogonally (???)
-          } else {
-            var x = collisionData.edgeDirection._x;
-            var y = collisionData.edgeDirection._y;
-            collisionData.edgeDirection._x = -y;
-            collisionData.edgeDirection._y = x;
-          }
         }
         
         return [v];
@@ -782,13 +787,6 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
           otherBestEdge.v1,
           otherBestEdge.v0
         ).normalize();
-        
-        // Flip the edge direction if it's opposite from the velocity.
-        // This is to ensure the edge is always pointing in the direction the
-        // object is going.
-        if (geom.Vec2.dot(collisionData.edgeDirection, this.velocity) < 0) {
-          collisionData.edgeDirection.multiply(-1);
-        }
       }
       
       return contactManifold;
@@ -909,13 +907,7 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
    */
   resolveCollisions: {
     value: function () {
-      var dx = this.collisionDisplacementSum._x;
-      var dy = this.collisionDisplacementSum._y;
-      var resolutionAllowed =
-          Math.abs(dx) >= PhysicsObject.COLLISION_DISPLACEMENT_SLOP ||
-          Math.abs(dy) >= PhysicsObject.COLLISION_DISPLACEMENT_SLOP;
-
-      if (!this.fixed && resolutionAllowed) {
+      if (!this.fixed) {
         // Project the acceleration on the direction of the collision impulse
         // Experimental functionality: Is this needed?
         var impulseSumDirection  = 
@@ -936,19 +928,24 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
           this.collisionMomentumSum._x + this.collisionSurfaceImpulseSum._x;
         var vy = 
           this.collisionMomentumSum._y + this.collisionSurfaceImpulseSum._y;
-
+        
         if (Math.abs(vx) < PhysicsObject.COLLISION_VELOCITY_SLOP) vx = 0;
         if (Math.abs(vy) < PhysicsObject.COLLISION_VELOCITY_SLOP) vy = 0;
-
-        this.velocity._x = vx
-        this.velocity._y = vy
-        this.calculationCache.vx = vx
-        this.calculationCache.vy = vy
-
+          
+        this.velocity._x = vx;
+        this.velocity._y = vy;
+        this.calculationCache.vx = vx;
+        this.calculationCache.vy = vy;
+        
+        var dx = this.collisionDisplacementSum._x;
+        var dy = this.collisionDisplacementSum._y;
+        
+        if (Math.abs(dx) < PhysicsObject.COLLISION_DISPLACEMENT_SLOP) dx = 0;
+        if (Math.abs(dy) < PhysicsObject.COLLISION_DISPLACEMENT_SLOP) dy = 0;
+        
         this.transform.position._x += dx;
-        this.calculationCache.x += dx;
-
         this.transform.position._y += dy;
+        this.calculationCache.x += dx;
         this.calculationCache.y += dy;
       }
       
@@ -959,11 +956,28 @@ PhysicsObject.prototype = Object.freeze(Object.create(GameObject.prototype, {
   },
   
   onOverlap: {
-    value: function (physObj) {}
+    value: function (physObj) {
+      this.overlaps.push({
+        obj: physObj
+      });
+      
+      for (let behavior of this._behaviors) {
+        behavior.onOverlap(physObj);
+      }
+    }
   },
   
   onCollide: {
-    value: function (physObj, collisionData) {}
+    value: function (physObj, collisionData) {
+      this.collisions.push({
+        obj:           physObj,
+        collisionData: collisionData
+      });
+      
+      for (let behavior of this._behaviors) {
+        behavior.onCollide(physObj, collisionData);
+      }
+    }
   },
   
   canCollide: {

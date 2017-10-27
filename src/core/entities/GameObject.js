@@ -23,6 +23,7 @@ var GameObject = function () {
   this.transform.rotation = 0; // Updated per frame according to this.forward
   
   this.wflId              = idCounter++;
+  this.name               = undefined;
   this.vertices           = [];
   this.states             = {};
   this.currentState       = undefined;
@@ -30,6 +31,8 @@ var GameObject = function () {
   this.customData         = {};
   this.calculationCache   = {};
   this.forward            = new geom.Vec2(1, 0);
+  this.overlaps           = [];
+  this.collisions         = [];
   
   // If false, the collision vertices in this game object's frame objects
   // will not rotate with the forward
@@ -38,6 +41,10 @@ var GameObject = function () {
   // A reference to the previously added sprite so that it can be removed when
   // a new sprite is set with _setSprite()
   this._prevSprite        = undefined;
+  
+  // List of WFL behaviors to be performed every update()
+  this._behaviors = [];
+  this._newlyAddedBehaviors = []; // Cleared every frame
   
   this._bucketPosition = {x: 0, y: 0};
   this._cachedWidth    = 0;
@@ -65,6 +72,43 @@ Object.defineProperties(GameObject, {
 });
 
 GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
+  addBehavior: {
+    value: function (behavior) {
+      let index = this._behaviors.indexOf(behavior);
+      
+      if (index < 0) {
+        behavior.gameObject = this;
+        this._behaviors.push(behavior);
+        this._newlyAddedBehaviors.push(behavior);
+        behavior.initialize();
+      }
+    }
+  },
+  
+  removeBehavior: {
+    value: function (behavior) {
+      let index = this._behaviors.indexOf(behavior);
+      
+      if (index >= 0) {
+        this._behaviors.splice(index, 1);
+        behavior.end();
+        behavior.gameObject = null;
+      }
+    }
+  },
+  
+  beginNewBehaviors: {
+    value: function () {
+      if (this._newlyAddedBehaviors.length > 0) {
+        for (let behavior of this._newlyAddedBehaviors) {
+          behavior.begin();
+        }
+
+        this._newlyAddedBehaviors = [];
+      }
+    }
+  },
+  
   update: {
     value: function (dt) {
       // The contents of this function should be copypasted into
@@ -75,6 +119,43 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
       }
       
       this.transform.rotation = Math.atan2(this.forward._y, this.forward._x);
+    }
+  },
+  
+  /**
+   * Called every frame before update() is called on any other GameObject
+   */
+  preUpdateBehaviors: {
+    value: function (dt) {
+      for (let behavior of this._behaviors) {
+        behavior.preUpdate(dt);
+      }
+    }
+  },
+  
+  updateBehaviors: {
+    value: function (dt) {
+      for (let behavior of this._behaviors) {
+        behavior.update(dt);
+      }
+    }
+  },
+  
+  /**
+   * Called every frame after update() is called on all other GameObjects
+   */
+  postUpdateBehaviors: {
+    value: function (dt) {
+      for (let behavior of this._behaviors) {
+        behavior.postUpdate(dt);
+      }
+    }
+  },
+  
+  cleanBehaviorData: {
+    value: function () {
+      this.overlaps.length   = 0;
+      this.collisions.length = 0;
     }
   },
   
@@ -180,6 +261,28 @@ GameObject.prototype = Object.freeze(Object.create(PIXI.Container.prototype, {
       if (this.currentState === undefined) {
         this.setState(stateName);
       }
+    }
+  },
+  
+  checkBroadPhaseCollision: {
+    value: function (physObj) {
+      var cache      = this.calculationCache;
+      var otherCache = physObj.calculationCache;
+
+      // Specifically, check if the two object's AABBs are overlapping
+      var thisHalfW = cache.aabbHalfWidth;
+      var thisHalfH = cache.aabbHalfHeight;
+      var thisX     = cache.x;
+      var thisY     = cache.y;
+      var thatHalfW = otherCache.aabbHalfWidth;
+      var thatHalfH = otherCache.aabbHalfHeight;
+      var thatX     = otherCache.x;
+      var thatY     = otherCache.y;
+      
+      return thisX - thisHalfW <= thatX + thatHalfW &&
+             thisX + thisHalfW >= thatX - thatHalfW &&
+             thisY - thisHalfH <= thatY + thatHalfH &&
+             thisY + thisHalfH >= thatY - thatHalfH;
     }
   },
   

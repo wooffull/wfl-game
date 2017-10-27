@@ -3,6 +3,7 @@
 const PIXI          = require('pixi.js');
 
 const debug         = require('../debug');
+const world         = require('../world');
 const datastructure = require('../datastructure');
 const geom          = require('../geom');
 const cameras       = require('./cameras');
@@ -19,6 +20,8 @@ var Scene = function (canvas) {
   this.player              = undefined;
   this.nextScene           = undefined;
   this.collisionIterations = Scene.DEFAULT_MAX_COLLISION_ITERATIONS;
+  
+  this._registeredName = undefined;
 
   this.reset();
 };
@@ -38,7 +41,9 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
    * Clears up references used in the scene
    */
   destroy : {
-    value : function () { }
+    value : function () {
+      this.unregister();
+    }
   },
 
   /**
@@ -49,6 +54,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var canvas = this.canvas;
       
       this._stage.removeChildren();
+      this._stage.filters = [];
       this._gameObjectLayers = { 0 : [] };
       
       this._screenOffset     = new geom.Vec2(canvas.width * 0.5, canvas.height * 0.5);
@@ -87,6 +93,26 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       this._distancePairCache  = {};
       this._quadtreeCache      = {};
       this._collisionPairCache = {};
+    }
+  },
+  
+  register : {
+    value : function (name) {
+      this.unregister();
+      
+      if (typeof this._registeredName === 'undefined') {
+        this._registeredName = name;
+        world.registerScene(name, this);
+      }
+    }
+  },
+  
+  unregister : {
+    value : function () {
+      if (typeof this._registeredName !== 'undefined') {
+        world.unregisterScene(this._registeredName);
+        this._registeredName = undefined;
+      }
     }
   },
   
@@ -153,7 +179,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       // If this game object needs to be updated every frame, we'll add it
       // to another array for quick reference
       if (persists) {
-        this._persistingGameObjects.push(obj);
+        this.addPersistence(obj);
       }
     }
   },
@@ -171,8 +197,10 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
 
       // If still no layerId, check through all layers...
       if (typeof layerId === "undefined") {
-        for (var i = 0; i < this._gameObjectLayers.length; i++) {
-          var layer = this._gameObjectLayers[i];
+        let layerKeys = Object.keys(this._gameObjectLayers);
+        
+        for (let key of layerKeys) {
+          var layer = this._gameObjectLayers[key];
 
           if (layer) {
             var objIndex = layer.indexOf(obj);
@@ -205,10 +233,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       }
       
       // Remove the game object from persisting game objects
-      var indexInPersisting = this._persistingGameObjects.indexOf(obj);
-      if (indexInPersisting >= 0) {
-        this._persistingGameObjects.splice(indexInPersisting, 1);
-      }
+      this.removePersistence(obj);
       
       // Remove the game object from nearby game objects
       var indexInNearby = this._nearbyGameObjects.indexOf(obj);
@@ -216,10 +241,34 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         this._nearbyGameObjects.splice(indexInNearby, 1);
       }
       
+      // Remove the game object from non-partitioned game objects
+      var indexInNonPartitioned = this._nonPartitionedGameObjects.indexOf(obj);
+      if (indexInNonPartitioned >= 0) {
+        this._nonPartitionedGameObjects.splice(indexInNonPartitioned, 1);
+      }
+      
       // Remove the game object from updating game objects
       var indexInUpdating = this._gameObjectsToUpdate.indexOf(obj);
       if (indexInUpdating >= 0) {
         this._gameObjectsToUpdate.splice(indexInUpdating, 1);
+      }
+    }
+  },
+  
+  addPersistence: {
+    value: function(obj) {
+      var indexInPersisting = this._persistingGameObjects.indexOf(obj);
+      if (indexInPersisting < 0) {
+        this._persistingGameObjects.push(obj);
+      }
+    }
+  },
+  
+  removePersistence: {
+    value: function(obj) {
+      var indexInPersisting = this._persistingGameObjects.indexOf(obj);
+      if (indexInPersisting >= 0) {
+        this._persistingGameObjects.splice(indexInPersisting, 1);
       }
     }
   },
@@ -253,17 +302,22 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         if (obj.solid) this._quadtree.insert(obj);
       }
 
-      for (let obj of this._gameObjectsToUpdate) {
-        obj.update(dt);
-      }
+      for (let obj of this._gameObjectsToUpdate) obj.update(dt);
       
-      // Seems to be faster to have this loop in addition to the update loop above
+      // Seems to be faster to have this loop in addition to the update loop 
+      // above
       for (let obj of this._gameObjectsToUpdate) {
         obj.cacheCalculations();
       }
       
       this._handleCollisions(this._gameObjectsToUpdate);
       this._handleOverlaps(this._gameObjectsToUpdate);
+      
+      for (let obj of this._gameObjectsToUpdate) obj.beginNewBehaviors();
+      for (let obj of this._gameObjectsToUpdate) obj.preUpdateBehaviors(dt);
+      for (let obj of this._gameObjectsToUpdate) obj.updateBehaviors(dt);
+      for (let obj of this._gameObjectsToUpdate) obj.postUpdateBehaviors(dt);
+      for (let obj of this._gameObjectsToUpdate) obj.cleanBehaviorData();
     }
   },
   
@@ -289,6 +343,101 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       );
     }
   },
+  
+  /////////////////////////////////////////////////////////////////////////////
+  // Query/ Search Functions
+  /////////////////////////////////////////////////////////////////////////////
+  findGameObjectByName: {
+    value: function (name, layerId) {
+      // Layer provided, so just search through that one
+      if (typeof layerId !== 'undefined') {
+        var layer = this._gameObjectLayers[layerId];
+
+        if (layer) {
+          for (let obj of layer) {
+            if (obj.name === name) {
+              return obj;
+            }
+          }
+        }
+        
+      // No layer provided, so look through all of them...
+      } else {
+        let layerKeys = Object.keys(this._gameObjectLayers);
+        
+        for (let key of layerKeys) {
+          var layer = this._gameObjectLayers[key];
+
+          if (layer) {
+            for (let obj of layer) {
+              if (obj.name === name) {
+                return obj;
+              }
+            }
+          }
+        }
+      }
+      
+      return null;
+    }
+  },
+  
+  findGameObjectsByName: {
+    value: function (name, layerId) {
+      let found = [];
+      
+      // Layer provided, so just search through that one
+      if (typeof layerId !== 'undefined') {
+        var layer = this._gameObjectLayers[layerId];
+
+        if (layer) {
+          for (let obj of layer) {
+            if (obj.name === name) {
+              found.push(obj);
+            }
+          }
+        }
+        
+      // No layer provided, so look through all of them...
+      } else {
+        let layerKeys = Object.keys(this._gameObjectLayers);
+        
+        for (let key of layerKeys) {
+          var layer = this._gameObjectLayers[key];
+
+          if (layer) {
+            for (let obj of layer) {
+              if (obj.name === name) {
+                found.push(obj);
+              }
+            }
+          }
+        }
+      }
+      
+      return found;
+    }
+  },
+  
+  findGameObjectsInRect: {
+    value: function (leftX, topY, width, height) {
+      let found = [];
+      let rect  = {
+        calculationCache: {
+          aabbHalfWidth:  width * 0.5,
+          aabbHalfHeight: height * 0.5,
+          x:              leftX + width * 0.5,
+          y:              topY + height * 0.5
+        }
+      };
+      this._quadtree.retrieve(found, rect);
+      
+      // Only keep objects that are colliding with the rectangle
+      found = found.filter((obj) => obj.checkBroadPhaseCollision(rect));
+      
+      return found;
+    }
+  },
 
   /**
    * Draws the scene and all game objects in it
@@ -297,9 +446,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     value : function (renderer) {
       // Clear all children then add only the ones that can be seen
       this._stage.children.length = 0;
-      this._lastDrawnGameObjects  = this._findSurroundingGameObjects(this.camera, 2).sort(
-        (a, b) => a.layer - b.layer
-      );
+      this._lastDrawnGameObjects  = this.drawSort(renderer);
       
       // This seems to perform faster than using filter()
       for (let obj of this._lastDrawnGameObjects) {
@@ -311,6 +458,14 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
           this._stage.children.push(obj);
         }
       }
+    }
+  },
+  
+  drawSort: {
+    value: function (renderer) {
+      return this._findSurroundingGameObjects(this.camera, 2).sort(
+        (a, b) => a.layer - b.layer
+      );
     }
   },
   
@@ -542,8 +697,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var nearBuckets = this._findSurroundingBuckets(gameObject, bucketRadius);
       var gameObjects = [];
 
-      //for (var i = 0; i < nearBucketLength; i++) {
-      for (let bucket of nearBuckets) {  
+      for (let bucket of nearBuckets) {
         gameObjects = gameObjects.concat(bucket);
       }
 
@@ -595,7 +749,7 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
     value: function (obj0, obj1, collisionData) {
       // If objects are colliding, determine how much each should
       // move (based on mass: the heavier object will move less)
-      var totalDepth    = collisionData.contactPoint.depth + 0.001;
+      var totalDepth    = collisionData.contactPoint.depth + 0.005;
       var direction     = collisionData.direction;
       var m0            = obj0.mass;
       var m1            = obj1.mass;
@@ -605,12 +759,12 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       var displacement1 = {x: 0, y: 0};
       var restitution   = obj0.restitution * obj1.restitution;
       var v0            = {
-        x: obj0._previousVelocity._x,
-        y: obj0._previousVelocity._y
+        x: obj0.velocity._x,
+        y: obj0.velocity._y
       };
       var v1            = {
-        x: obj1._previousVelocity._x,
-        y: obj1._previousVelocity._y
+        x: obj1.velocity._x,
+        y: obj1.velocity._y
       };
 
       // Fixed objects are treated as having an infinite mass
@@ -620,43 +774,62 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
       // Non-fixed objects can be pushed out to resolve
       // collisions; fixed objects cannot
       if (!obj0.fixed && !obj1.fixed) {
-        depth0 = depth1 = totalDepth * 0.5;
+        var v0OntoDirection = {
+          x: v0.x * direction.x,
+          y: v0.y * direction.y
+        };
+        var v1OntoDirection = {
+          x: v1.x * -direction.x,
+          y: v1.y * -direction.y
+        };
+        let magnitude0 = 
+          v0OntoDirection.x * v0OntoDirection.x +
+          v0OntoDirection.y * v0OntoDirection.y;
+        let magnitude1 =
+          v1OntoDirection.x * v1OntoDirection.x +
+          v1OntoDirection.y * v1OntoDirection.y;
+        let magnitudeSum = magnitude0 + magnitude1;
+        
+        if (magnitudeSum !== 0) {
+          depth0 = totalDepth * magnitude0 / magnitudeSum;
+          depth1 = totalDepth * magnitude1 / magnitudeSum;
+        } else {
+          depth0 = depth1 = totalDepth * 0.5;
+        }
       } else if (!obj0.fixed) {
         depth0 = totalDepth;
       } else {
         depth1 = totalDepth;
       }
+      
+      var momentum0 = {x: 0, y: 0};
+      var momentum1 = {x: 0, y: 0};
 
       // Move the object out by its portion of penetration depth
       if (depth0 !== 0) {
         // Move in the direction as much as possible
         obj0.collisionDisplacementSum.x -= direction.x * depth0;
         obj0.collisionDisplacementSum.y -= direction.y * depth0;
+      }
 
-        if (!this._collisionObjectCache[obj0.wflId]) {
-          this._collisionObjectCache[obj0.wflId] = true;
-          
-          if (!obj0.fixed) {
-            this._collisionObjects.push(obj0);
-          }
+      if (!this._collisionObjectCache[obj0.wflId]) {
+        this._collisionObjectCache[obj0.wflId] = true;
+
+        if (!obj0.fixed) {
+          this._collisionObjects.push(obj0);
         }
-        
-        // Conservation of momentum
-        // Distribute velocities between the two bodies
-        var momentum0 = {x: 0, y: 0};
+      }
+
+      // Conservation of momentum
+      // Distribute velocities between the two bodies
+      if (m0 !== Infinity) {
         if (m1 === Infinity) {
           momentum0.x = 2 * v1.x - v0.x;
           momentum0.y = 2 * v1.y - v0.y;
         } else {
-          momentum0.x =
-            v0.x * (m0 - m1) / (m0 + m1) +
-            v1.x * 2 * m1 / (m0 + m1);
-          momentum0.y =
-            v0.y * (m0 - m1) / (m0 + m1) +
-            v1.y * 2 * m1 / (m0 + m1);
+          momentum0.x = (v0.x * Math.abs(m0 - m1) + (2 * m1 * v1.x)) / (m0 + m1);
+          momentum0.y = (v0.y * Math.abs(m0 - m1) + (2 * m1 * v1.y)) / (m0 + m1);
         }
-        obj0.collisionMomentumSum._x += momentum0.x * restitution;
-        obj0.collisionMomentumSum._y += momentum0.y * restitution;
       }
 
       // Flip direction before limiting obj1's depth movement too
@@ -668,38 +841,43 @@ Scene.prototype = Object.freeze(Object.create(Scene.prototype, {
         // Move in the direction as much as possible
         obj1.collisionDisplacementSum.x -= direction.x * depth1;
         obj1.collisionDisplacementSum.y -= direction.y * depth1;
+      }
         
-        if (!this._collisionObjectCache[obj1.wflId]) {
-          this._collisionObjectCache[obj1.wflId] = true;
-          
-          if (!obj1.fixed) {
-            this._collisionObjects.push(obj1);
-          }
+      if (!this._collisionObjectCache[obj1.wflId]) {
+        this._collisionObjectCache[obj1.wflId] = true;
+
+        if (!obj1.fixed) {
+          this._collisionObjects.push(obj1);
         }
-        
-        // Conservation of momentum
-        // Distribute velocities between the two bodies
-        var momentum1 = {x: 0, y: 0};
+      }
+
+      // Conservation of momentum
+      // Distribute velocities between the two bodies
+      if (m1 !== Infinity) {
         if (m0 === Infinity) {
           momentum1.x = 2 * v0.x - v1.x;
           momentum1.y = 2 * v0.y - v1.y;
         } else {
-          momentum1.x =
-            v1.x * (m1 - m0) / (m1 + m0) +
-            v0.x * 2 * m0 / (m1 + m0);
-          momentum1.y =
-            v1.y * (m1 - m0) / (m1 + m0) +
-            v0.y * 2 * m0 / (m1 + m0);
+          momentum1.x = (v1.x * Math.abs(m1 - m0) + (2 * m0 * v0.x)) / (m0 + m1);
+          momentum1.y = (v1.y * Math.abs(m1 - m0) + (2 * m0 * v0.y)) / (m0 + m1);
         }
+      }
+      
+      if (momentum0.x !== 0 || momentum0.y !== 0) {
+        obj0.collisionMomentumSum._x += momentum0.x * restitution;
+        obj0.collisionMomentumSum._y += momentum0.y * restitution;
+      }
+      
+      if (momentum1.x !== 0 || momentum1.y !== 0) {
         obj1.collisionMomentumSum._x += momentum1.x * restitution;
         obj1.collisionMomentumSum._y += momentum1.y * restitution;
       }
 
-      // Flip direction before limiting obj1's depth movement too
+      // Flip direction before limiting obj1's depth movement
       direction.x *= -1;
       direction.y *= -1;
       obj0.onCollide(obj1, collisionData);
-      // Flip direction before limiting obj1's depth movement too
+      // Flip direction before limiting obj0's depth movement too
       direction.x *= -1;
       direction.y *= -1;
       obj1.onCollide(obj0, collisionData);

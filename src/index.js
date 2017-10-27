@@ -2,12 +2,13 @@
 
 // WFL Modules
 const core          = require('./core');
-const actions       = require('./actions');
+const behavior      = require('./behavior');
 const display       = require('./display');
 const input         = require('./input');
 const geom          = require('./geom');
 const debug         = require('./debug');
 const datastructure = require('./datastructure');
+const world         = require('./world');
 
 const create = function (canvas) {
   return new core.Game(canvas);
@@ -15,12 +16,13 @@ const create = function (canvas) {
 
 module.exports = {
   core:          core,
-  actions:       actions,
+  behavior:      behavior,
   display:       display,
   input:         input,
   geom:          geom,
   debug:         debug,
   datastructure: datastructure,
+  world:         world,
 
   // Consistent reference for jQuery
   jquery:        require('jquery'),

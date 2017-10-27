@@ -1,6 +1,7 @@
 "use strict";
 
-const PIXI = require('pixi.js');
+const PIXI      = require('pixi.js');
+const Constants = require('../Constants');
 
 const Flag = {
   AABB:     'aabb',
@@ -24,7 +25,6 @@ const DEFAULT_DEBUG_OPTIONS = {
 
 var debugOptions    = {};
 var debugContainers = {};
-var currentId       = -1;
 
 var start = function (id, options = {}) {
   if (!contains(id)) {
@@ -45,8 +45,8 @@ var stop = function (id) {
     delete debugContainers[id];
   }
   
-  if (currentId === id) {
-    currentId = -1;
+  if (Constants.currentId === id) {
+    Constants.currentId = -1;
   }
 };
 
@@ -54,21 +54,17 @@ var contains = function (id) {
   return typeof debugOptions[id] !== 'undefined';
 };
 
-var setCurrentId = function (id) {
-  currentId = id;
-};
-
-var clear = function (id = currentId) {
+var clear = function (id = Constants.currentId) {
   if (contains(id)) {
     debugContainers[id].clear();
   }
 };
 
-var getContainer = function (id = currentId) {
+var getContainer = function (id = Constants.currentId) {
   return debugContainers[id];
 };
 
-var getOptions = function (id = currentId) {
+var getOptions = function (id = Constants.currentId) {
   if (contains(id)) {
     return debugOptions[id];
   }
@@ -132,7 +128,6 @@ module.exports = {
   start:        start,
   stop:         stop,
   contains:     contains,
-  setCurrentId: setCurrentId,
   clear:        clear,
   getContainer: getContainer,
   getOptions:   getOptions,

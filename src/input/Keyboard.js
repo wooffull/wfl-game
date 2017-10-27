@@ -2,157 +2,155 @@
 
 var $ = require('jquery');
 
-var keys = Object.create({}, {
-    /**
-     *  Letters
-     */
-    A : { value : 65 },
-    B : { value : 66 },
-    C : { value : 67 },
-    D : { value : 68 },
-    E : { value : 69 },
-    F : { value : 70 },
-    G : { value : 71 },
-    H : { value : 72 },
-    I : { value : 73 },
-    J : { value : 74 },
-    K : { value : 75 },
-    L : { value : 76 },
-    M : { value : 77 },
-    N : { value : 78 },
-    O : { value : 79 },
-    P : { value : 80 },
-    Q : { value : 81 },
-    R : { value : 82 },
-    S : { value : 83 },
-    T : { value : 84 },
-    U : { value : 85 },
-    V : { value : 86 },
-    W : { value : 87 },
-    X : { value : 88 },
-    Y : { value : 89 },
-    Z : { value : 90 },
+var Keyboard = {
+  /**
+   *  Letters
+   */
+  A : 65,
+  B : 66,
+  C : 67,
+  D : 68,
+  E : 69,
+  F : 70,
+  G : 71,
+  H : 72,
+  I : 73,
+  J : 74,
+  K : 75,
+  L : 76,
+  M : 77,
+  N : 78,
+  O : 79,
+  P : 80,
+  Q : 81,
+  R : 82,
+  S : 83,
+  T : 84,
+  U : 85,
+  V : 86,
+  W : 87,
+  X : 88,
+  Y : 89,
+  Z : 90,
 
-    /**
-     * Arrows
-     */
-    LEFT  : { value : 37 },
-    UP    : { value : 38 },
-    RIGHT : { value : 39 },
-    DOWN  : { value : 40 },
+  /**
+   * Arrows
+   */
+  LEFT  : 37,
+  UP    : 38,
+  RIGHT : 39,
+  DOWN  : 40,
 
-    /**
-     * Numbers
-     */
-    ZERO  : { value : 48 },
-    ONE   : { value : 49 },
-    TWO   : { value : 50 },
-    THREE : { value : 51 },
-    FOUR  : { value : 52 },
-    FIVE  : { value : 53 },
-    SIX   : { value : 54 },
-    SEVEN : { value : 55 },
-    EIGHT : { value : 56 },
-    NINE  : { value : 57 },
+  /**
+   * Numbers
+   */
+  ZERO  : 48,
+  ONE   : 49,
+  TWO   : 50,
+  THREE : 51,
+  FOUR  : 52,
+  FIVE  : 53,
+  SIX   : 54,
+  SEVEN : 55,
+  EIGHT : 56,
+  NINE  : 57,
 
-    /**
-     * Numpad and Related
-     */
-    ZERO_NUMPAD   : { value : 96  },
-    ONE_NUMPAD    : { value : 97  },
-    TWO_NUMPAD    : { value : 98  },
-    THREE_NUMPAD  : { value : 99  },
-    FOUR_NUMPAD   : { value : 100 },
-    FIVE_NUMPAD   : { value : 101 },
-    SIX_NUMPAD    : { value : 102 },
-    SEVEN_NUMPAD  : { value : 103 },
-    EIGHT_NUMPAD  : { value : 104 },
-    NINE_NUMPAD   : { value : 105 },
-    ASTERISK      : { value : 106 },
-    PLUS_NUMPAD   : { value : 107 },
-    MINUS_NUMPAD  : { value : 109 },
-    PERIOD_NUMPAD : { value : 110 },
-    SLASH_NUMPAD  : { value : 111 },
-    NUM_LOCK      : { value : 144 },
+  /**
+   * Numpad and Related
+   */
+  ZERO_NUMPAD   : 96 ,
+  ONE_NUMPAD    : 97 ,
+  TWO_NUMPAD    : 98 ,
+  THREE_NUMPAD  : 99 ,
+  FOUR_NUMPAD   : 100,
+  FIVE_NUMPAD   : 101,
+  SIX_NUMPAD    : 102,
+  SEVEN_NUMPAD  : 103,
+  EIGHT_NUMPAD  : 104,
+  NINE_NUMPAD   : 105,
+  ASTERISK      : 106,
+  PLUS_NUMPAD   : 107,
+  MINUS_NUMPAD  : 109,
+  PERIOD_NUMPAD : 110,
+  SLASH_NUMPAD  : 111,
+  NUM_LOCK      : 144,
 
-    /**
-     * Function Keys (F Keys)
-     */
-    F1  : { value : 112 },
-    F2  : { value : 113 },
-    F3  : { value : 114 },
-    F4  : { value : 115 },
-    F5  : { value : 116 },
-    F6  : { value : 117 },
-    F7  : { value : 118 },
-    F8  : { value : 119 },
-    F9  : { value : 120 },
-    F10 : { value : 121 },
-    F11 : { value : 122 },
-    F12 : { value : 123 },
+  /**
+   * Function Keys (F Keys)
+   */
+  F1  : 112,
+  F2  : 113,
+  F3  : 114,
+  F4  : 115,
+  F5  : 116,
+  F6  : 117,
+  F7  : 118,
+  F8  : 119,
+  F9  : 120,
+  F10 : 121,
+  F11 : 122,
+  F12 : 123,
 
-    /**
-     * Miscellaneous
-     */
-    BACKSPACE            : { value : 8   },
-    TAB                  : { value : 9   },
-    ENTER                : { value : 13  },
-    SHIFT                : { value : 16  },
-    CONTROL              : { value : 17  },
-    ALT                  : { value : 18  },
-    PAUSE                : { value : 19  },
-    CAPS_LOCK            : { value : 20  },
-    ESCAPE               : { value : 27  },
-    SPACEBAR             : { value : 32  },
-    PAGE_UP              : { value : 33  },
-    PAGE_DOWN            : { value : 34  },
-    END                  : { value : 35  },
-    HOME                 : { value : 36  },
-    PRINT_SCREEN         : { value : 44  },
-    INSERT               : { value : 45  },
-    DELETE               : { value : 46  },
-    WINDOWS              : { value : 91  },
-    SCROLL_LOCK          : { value : 145 },
-    SEMICOLON            : { value : 186 },
-    EQUALS               : { value : 187 },
-    COMMA                : { value : 188 },
-    MINUS                : { value : 189 },
-    PERIOD               : { value : 190 },
-    SLASH                : { value : 191 },
-    ACCENT               : { value : 192 },
-    LEFT_SQUARE_BRACKET  : { value : 219 },
-    BACKSLASH            : { value : 220 },
-    RIGHT_SQUARE_BRACKET : { value : 221 },
-    APOSTROPHE           : { value : 222 }
-});
+  /**
+   * Miscellaneous
+   */
+  BACKSPACE            : 8  ,
+  TAB                  : 9  ,
+  ENTER                : 13 ,
+  SHIFT                : 16 ,
+  CONTROL              : 17 ,
+  ALT                  : 18 ,
+  PAUSE                : 19 ,
+  CAPS_LOCK            : 20 ,
+  ESCAPE               : 27 ,
+  SPACEBAR             : 32 ,
+  PAGE_UP              : 33 ,
+  PAGE_DOWN            : 34 ,
+  END                  : 35 ,
+  HOME                 : 36 ,
+  PRINT_SCREEN         : 44 ,
+  INSERT               : 45 ,
+  DELETE               : 46 ,
+  WINDOWS              : 91 ,
+  SCROLL_LOCK          : 145,
+  SEMICOLON            : 186,
+  EQUALS               : 187,
+  COMMA                : 188,
+  MINUS                : 189,
+  PERIOD               : 190,
+  SLASH                : 191,
+  ACCENT               : 192,
+  LEFT_SQUARE_BRACKET  : 219,
+  BACKSLASH            : 220,
+  RIGHT_SQUARE_BRACKET : 221,
+  APOSTROPHE           : 222,
+  
+  keyStates: (function () {
+    var _keyStates = [];
 
-var Keyboard = function () {
-    this.keyStates = (function () {
-        var _keyStates = [];
+    for (var i = 0; i < 256; i++) {
+      _keyStates[i] = false;
+    }
 
-        for (var i = 0; i < 256; i++) {
-            _keyStates[i] = false;
-        }
+    return _keyStates;
+  })(),
+  
+  previousKeyStates: (function () {
+    var _keyStates = [];
 
-        return _keyStates;
-    })();
+    for (var i = 0; i < 256; i++) {
+      _keyStates[i] = false;
+    }
 
-    this.previousKeyStates = (function () {
-        var _keyStates = [];
-
-        for (var i = 0; i < 256; i++) {
-            _keyStates[i] = false;
-        }
-
-        return _keyStates;
-    })();
-
-    // Determines if key events will be registered
-    this.isOn = true;
-    // Whether or not a change has been made that requires an update
-    this.needsToBeUpdated = false;
-    // Whether or not any key is currently pressed
-    this.anyKeyPressed = false;
+    return _keyStates;
+  })(),
+  
+  // Determines if key events will be registered
+  isOn: true,
+  // Whether or not a change has been made that requires an update
+  needsToBeUpdated: false,
+  // Whether or not any key is currently pressed
+  anyKeyPressed: false
 };
 
 Object.defineProperties(Keyboard, {
@@ -230,17 +228,15 @@ Object.defineProperties(Keyboard, {
 
             return keys;
         })()
-    }
-});
-
-Keyboard.prototype = Object.freeze(Object.create(keys, {
+    },
+  
     /**
      * Returns the key that was just pressed
      */
     getKeyJustPressed : {
         value : function () {
-            for (var i = 0; i < this.keyStates.length; i++) {
-                if (this.justPressed(i)) {
+            for (var i = 0; i < Keyboard.keyStates.length; i++) {
+                if (Keyboard.justPressed(i)) {
                     return i;
                 }
             }
@@ -254,8 +250,8 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     getKeyJustReleased : {
         value : function () {
-            for (var i = 0; i < this.keyStates.length; i++) {
-                if (this.justReleased(i)) {
+            for (var i = 0; i < Keyboard.keyStates.length; i++) {
+                if (Keyboard.justReleased(i)) {
                     return i;
                 }
             }
@@ -269,13 +265,13 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     clear : {
         value : function () {
-            for (var i = 0; i < this.keyStates.length; i++) {
-                this.keyStates[i] = false;
-                this.previousKeyStates[i] = false;
+            for (var i = 0; i < Keyboard.keyStates.length; i++) {
+                Keyboard.keyStates[i] = false;
+                Keyboard.previousKeyStates[i] = false;
             }
 
-            this.needsToBeUpdated = false;
-            this.anyKeyPressed = false;
+            Keyboard.needsToBeUpdated = false;
+            Keyboard.anyKeyPressed = false;
         }
     },
 
@@ -284,7 +280,7 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     isPressed : {
         value : function (keyCode) {
-            return this.keyStates[keyCode];
+            return Keyboard.keyStates[keyCode];
         }
     },
 
@@ -293,9 +289,9 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     justPressed : {
         value : function (keyCode) {
-            return this.keyStates[keyCode] &&
-                   this.previousKeyStates[keyCode] !=
-                   this.keyStates[keyCode];
+            return Keyboard.keyStates[keyCode] &&
+                   Keyboard.previousKeyStates[keyCode] !=
+                   Keyboard.keyStates[keyCode];
         }
     },
 
@@ -304,9 +300,9 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     justReleased : {
         value : function (keyCode) {
-            return !this.keyStates[keyCode] &&
-                   this.previousKeyStates[keyCode] !=
-                   this.keyStates[keyCode];
+            return !Keyboard.keyStates[keyCode] &&
+                   Keyboard.previousKeyStates[keyCode] !=
+                   Keyboard.keyStates[keyCode];
         }
     },
 
@@ -315,19 +311,19 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     update : {
         value : function () {
-            if (this.needsToBeUpdated) {
+            if (Keyboard.needsToBeUpdated) {
                 var anyKeyPressed = false;
 
-                for (var i = 0; i < this.keyStates.length; i++) {
-                    this.previousKeyStates[i] = this.keyStates[i];
+                for (var i = 0; i < Keyboard.keyStates.length; i++) {
+                    Keyboard.previousKeyStates[i] = Keyboard.keyStates[i];
 
-                    if (this.keyStates[i]) {
+                    if (Keyboard.keyStates[i]) {
                         anyKeyPressed = true;
                     }
                 }
 
-                this.needsToBeUpdated = false;
-                this.anyKeyPressed = anyKeyPressed;
+                Keyboard.needsToBeUpdated = false;
+                Keyboard.anyKeyPressed = anyKeyPressed;
             }
         }
     },
@@ -337,8 +333,8 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     stop : {
         value : function () {
-            this.isOn = false;
-            this.clear();
+            Keyboard.isOn = false;
+            Keyboard.clear();
 
             if (window) {
                 $(window).off("keydown");
@@ -352,15 +348,15 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     start: {
         value : function () {
-            this.isOn = true;
+            Keyboard.isOn = true;
 
             if (window) {
                 // Clear listeners first, just so we never have multiple
                 $(window).off("keydown");
                 $(window).off("keyup");
 
-                $(window).on("keydown", this._onKeyDown.bind(this));
-                $(window).on("keyup", this._onKeyUp.bind(this));
+                $(window).on("keydown", Keyboard._onKeyDown.bind(Keyboard));
+                $(window).on("keyup", Keyboard._onKeyUp.bind(Keyboard));
             }
         }
     },
@@ -370,14 +366,18 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     _onKeyDown : {
         value : function (e) {
-            if (this.isOn && e.keyCode < this.keyStates.length &&
-                !this.keyStates[e.keyCode]) {
+            if (Keyboard.isOn && e.keyCode < Keyboard.keyStates.length) {
+              if (!Keyboard.keyStates[e.keyCode]) {
+                  Keyboard.keyStates[e.keyCode] = true;
+                  Keyboard.needsToBeUpdated = true;
+                  Keyboard.anyKeyPressed = true;
 
-                this.keyStates[e.keyCode] = true;
-                this.needsToBeUpdated = true;
-                this.anyKeyPressed = true;
+                  $(Keyboard).trigger('keydown');
+              }
+              
+              $(Keyboard).trigger('keypressed');
             }
-            if (e.keyCode >= this.keyStates.length) {
+            if (e.keyCode >= Keyboard.keyStates.length) {
                 console.log("EXTRA KEYCODE: " + e.keyCode);
             }
 
@@ -394,18 +394,16 @@ Keyboard.prototype = Object.freeze(Object.create(keys, {
      */
     _onKeyUp : {
         value : function (e) {
-            if (this.isOn && e.keyCode < this.keyStates.length &&
-                this.keyStates[e.keyCode]) {
+            if (Keyboard.isOn && e.keyCode < Keyboard.keyStates.length &&
+                Keyboard.keyStates[e.keyCode]) {
 
-                this.keyStates[e.keyCode] = false;
-                this.needsToBeUpdated = true;
+                Keyboard.keyStates[e.keyCode] = false;
+                Keyboard.needsToBeUpdated = true;
+          
+                $(Keyboard).trigger('keyup');
             }
         }
     }
-}));
-Object.freeze(Keyboard);
+});
 
-module.exports = {
-    keys     : keys,
-    Keyboard : Keyboard
-};
+module.exports = Keyboard;

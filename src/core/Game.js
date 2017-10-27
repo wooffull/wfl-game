@@ -1,10 +1,10 @@
 "use strict";
 
-const PIXI    = require('pixi.js');
-
-const display = require('../display');
-const input   = require('../input');
-const debug   = require('../debug');
+const PIXI      = require('pixi.js');
+const Constants = require('../Constants');
+const display   = require('../display');
+const input     = require('../input');
+const debug     = require('../debug');
 
 // Increments with every game created
 var currentId = 0;
@@ -25,7 +25,7 @@ var Game = function (canvasDisplayObject) {
   this.ticker   = this.pixiApp.ticker;
   this.loader   = PIXI.loader;
   
-  this.keyboard = new input.Keyboard();
+  this.keyboard = input.Keyboard;
   this.mouse    = new input.Mouse(this.canvas);
   this._scene   = undefined;
   
@@ -50,10 +50,10 @@ Game.prototype = Object.freeze(Object.create(Game.prototype, {
    */
   update: {
     value: function (dt) {
+      Constants.currentId = this._id;
       var debugOptions = debug.getOptions(this._id);
       
       if (debugOptions) {
-        debug.setCurrentId(this._id);
         debug.clear(this._id);
       }
 
